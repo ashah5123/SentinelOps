@@ -2,10 +2,11 @@
 
 **Cloud-native incident detection and investigation platform.**
 
-Status: **Foundation** — repository scaffolding, architecture, and a
-local data/event-streaming platform (Phase 2). No application services,
-authentication, Kubernetes, observability stack, or AI functionality are
-implemented yet.
+Status: **Foundation** — repository scaffolding, architecture, a
+local data/event-streaming platform (Phase 2), and an incident-management
+control-plane service (Phase 3). No authentication, Kubernetes,
+observability stack, AI functionality, frontend, or other application
+services are implemented yet.
 
 ## Overview
 
@@ -160,9 +161,11 @@ See [`docs/roadmap.md`](docs/roadmap.md) for the full, phased roadmap
 with acceptance criteria. In summary:
 
 1. Foundation — repository, architecture, standards. *(complete)*
-2. **Local data and event-streaming infrastructure** (current) —
-   Compose stack for PostgreSQL/pgvector, Redis, Redpanda, and MinIO.
-3. Telemetry ingestion and correlation service.
+2. Local data and event-streaming infrastructure — Compose stack for
+   PostgreSQL/pgvector, Redis, Redpanda, and MinIO. *(complete)*
+3. **Incident-management service** (current) — Java/Spring Boot
+   control-plane API, transactional outbox, idempotent anomaly
+   consumption.
 4. Detection engine and SLO evaluation.
 5. Investigation agent, retrieval, and root-cause analysis.
 6. Human-approval workflow and remediation recommendations.
@@ -174,6 +177,9 @@ with acceptance criteria. In summary:
 - [System overview](docs/architecture/system-overview.md)
 - [Architecture Decision Records](docs/decisions/)
 - [Local platform reference](docs/development/local-platform.md)
+- [Incident-service README](services/incident-service/README.md)
+- [Incident-service API reference](docs/api/incident-service.md)
+- [Event contracts](docs/events/event-envelope.md)
 
 ## Local platform (Phase 2)
 
@@ -247,12 +253,33 @@ for Docker availability, port conflicts, and Apple Silicon notes.
 `yes` confirmation. `make infra-down` does **not** delete data — use it
 for routine stop/start cycles.
 
+## Incident service (Phase 3)
+
+Phase 3 adds `services/incident-service`, a Java 21 / Spring Boot
+control-plane API for creating and managing incidents, backed by
+PostgreSQL (via Flyway migrations) and a transactional outbox that
+publishes versioned events to Redpanda. **It implements no
+authentication yet — see the security notice in its own README before
+running it anywhere but locally.**
+
+```bash
+make incident-build   # compile, format-check, test, package
+make incident-image   # build the Docker image
+make incident-up      # start infra + the incident service
+make incident-logs
+make incident-down
+```
+
+Full details, API reference, event contracts, and known limitations:
+[`services/incident-service/README.md`](services/incident-service/README.md).
+
 ## Project status
 
-**Foundation.** Repository scaffolding, architecture documentation, and
-a local data/event-streaming platform (Phase 2) exist. No application
-services, authentication, Kubernetes, observability stack, or AI
-functionality described above are implemented yet.
+**Foundation.** Repository scaffolding, architecture documentation, a
+local data/event-streaming platform (Phase 2), and an incident-management
+service (Phase 3) exist. No authentication, Kubernetes, observability
+stack, AI functionality, frontend, or other application services
+described above are implemented yet.
 
 ## Author
 

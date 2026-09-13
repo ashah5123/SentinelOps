@@ -1,10 +1,11 @@
 name: sentinelops
 
-# SentinelOps local data and event-streaming platform (Phase 2).
+# SentinelOps local platform: Phase 2 data/event-streaming infrastructure plus the Phase 3
+# incident-service application (behind the "app" Compose profile).
 #
 # Runs entirely on local resources with no paid APIs or cloud dependencies.
 # All host port bindings are restricted to 127.0.0.1. See docs/development/
-# local-platform.md for a full description of each component.
+# local-platform.md and services/incident-service/README.md for details on each component.
 
 networks:
   sentinelops-net:
@@ -188,3 +189,37 @@ services:
     entrypoint: ["/bin/sh", "/scripts/init-buckets.sh"]
     networks: [sentinelops-net]
     restart: "no"
+
+  incident-service:
+    build:
+      context: ../../services/incident-service
+      dockerfile: Dockerfile
+    image: sentinelops/incident-service:local
+    container_name: sentinelops-incident-service
+    profiles: ["app"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-topics-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      SERVER_PORT: 8081
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:${INCIDENT_SERVICE_PORT:-8081}:8081"
+    networks: [sentinelops-net]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M

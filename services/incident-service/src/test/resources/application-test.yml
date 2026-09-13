@@ -1,0 +1,27 @@
+# Overrides for Testcontainers-backed tests. Datasource/Kafka connection details are injected
+# at runtime via @DynamicPropertySource in the relevant base test classes.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    schemas: incidents,audit
+    default-schema: incidents
+
+sentinelops:
+  incident-service:
+    producer-name: incident-service-test
+    max-request-body-bytes: 1048576
+    outbox:
+      polling-interval: 500ms
+      batch-size: 50
+      max-attempts: 3
+      initial-backoff: 200ms
+      max-backoff: 2s
+      retention-after-publish: 24h
+    consumer:
+      max-retries: 3
+
+logging:
+  level:
+    com.sentinelops: DEBUG

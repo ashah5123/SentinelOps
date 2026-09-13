@@ -1,0 +1,89 @@
+# SentinelOps incident-service configuration.
+#
+# Defaults assume the service is run directly on the host (e.g. `./mvnw spring-boot:run`)
+# against the Phase 2 infrastructure's host-published ports. See application-docker.yml for
+# the profile used when this service itself runs inside the Compose network.
+server:
+  port: ${SERVER_PORT:8081}
+  shutdown: graceful
+
+spring:
+  application:
+    name: incident-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:sentinelops}
+    username: ${POSTGRES_APP_USER:sentinelops_app}
+    password: ${POSTGRES_APP_PASSWORD:change-me-local-dev-only}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 5000
+      validation-timeout: 3000
+      pool-name: incident-service-pool
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+  flyway:
+    enabled: true
+    schemas: incidents,audit
+    default-schema: incidents
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    consumer:
+      group-id: incident-service
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+
+sentinelops:
+  incident-service:
+    producer-name: incident-service
+    max-request-body-bytes: ${MAX_REQUEST_BODY_BYTES:1048576}
+    outbox:
+      polling-interval: ${OUTBOX_POLLING_INTERVAL:2s}
+      batch-size: ${OUTBOX_BATCH_SIZE:50}
+      max-attempts: ${OUTBOX_MAX_ATTEMPTS:8}
+      initial-backoff: ${OUTBOX_INITIAL_BACKOFF:1s}
+      max-backoff: ${OUTBOX_MAX_BACKOFF:60s}
+      retention-after-publish: ${OUTBOX_RETENTION_AFTER_PUBLISH:24h}
+    consumer:
+      max-retries: ${ANOMALY_CONSUMER_MAX_RETRIES:5}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    readinessstate:
+      enabled: true
+    livenessstate:
+      enabled: true
+
+logging:
+  structured:
+    format:
+      console: ecs
+  level:
+    com.sentinelops: ${LOG_LEVEL:INFO}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs

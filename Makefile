@@ -1,22 +1,30 @@
-.PHONY: help doctor validate infra-config infra-pull infra-up infra-down infra-status infra-logs infra-smoke infra-clean
+.PHONY: help doctor validate infra-config infra-pull infra-up infra-down infra-status infra-logs infra-smoke infra-clean \
+	incident-build incident-test incident-image incident-up incident-down incident-logs
 
 ENV_FILE := .env
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 CORE_SERVICES := postgres redis redpanda minio
+INCIDENT_SERVICE_DIR := services/incident-service
 
 help: ## Show available targets
 	@echo "SentinelOps — available targets:"
-	@echo "  make doctor        Check local prerequisites (read-only, installs nothing)"
-	@echo "  make validate      Run formatting/safety checks against the repository"
-	@echo "  make infra-config  Validate the local platform Compose configuration"
-	@echo "  make infra-pull    Pull pinned platform images"
-	@echo "  make infra-up      Start the local platform and wait for healthy services"
-	@echo "  make infra-down    Stop the local platform, keeping persistent volumes"
-	@echo "  make infra-status  Show local platform service status/health"
-	@echo "  make infra-logs    Show recent local platform logs"
-	@echo "  make infra-smoke   Run the full local platform smoke test"
-	@echo "  make infra-clean   Permanently delete local platform containers AND volumes (asks first)"
+	@echo "  make doctor          Check local prerequisites (read-only, installs nothing)"
+	@echo "  make validate        Run formatting/safety checks against the repository"
+	@echo "  make infra-config    Validate the local platform Compose configuration"
+	@echo "  make infra-pull      Pull pinned platform images"
+	@echo "  make infra-up        Start the local platform and wait for healthy services"
+	@echo "  make infra-down      Stop the local platform, keeping persistent volumes"
+	@echo "  make infra-status    Show local platform service status/health"
+	@echo "  make infra-logs      Show recent local platform logs"
+	@echo "  make infra-smoke     Run the full local platform smoke test"
+	@echo "  make infra-clean     Permanently delete local platform containers AND volumes (asks first)"
+	@echo "  make incident-build  Build and test the incident-service JAR (mvnw verify)"
+	@echo "  make incident-test   Run only the incident-service test suite"
+	@echo "  make incident-image  Build the incident-service Docker image"
+	@echo "  make incident-up     Start infra + the incident service (app profile)"
+	@echo "  make incident-down   Stop the incident-service container (infra keeps running)"
+	@echo "  make incident-logs   Tail incident-service logs"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -116,3 +124,24 @@ infra-clean: infra-config ## DESTROYS local platform containers and volumes (int
 	else \
 		echo "Aborted. Nothing was changed."; \
 	fi
+
+## ---- Phase 3: incident-service ----
+
+incident-build: ## Build and test the incident-service JAR (format check, tests, coverage, package)
+	cd $(INCIDENT_SERVICE_DIR) && ./mvnw -q verify
+
+incident-test: ## Run only the incident-service test suite
+	cd $(INCIDENT_SERVICE_DIR) && ./mvnw -q test
+
+incident-image: infra-config ## Build the incident-service Docker image
+	$(COMPOSE) --profile app build incident-service
+
+incident-up: infra-up ## Start required infra, then the incident service (app profile)
+	$(COMPOSE) --profile app up -d --wait incident-service
+	@echo "Incident service is up on the port configured by INCIDENT_SERVICE_PORT."
+
+incident-down: infra-config ## Stop only the incident-service container; infra keeps running
+	$(COMPOSE) --profile app stop incident-service
+
+incident-logs: infra-config ## Tail incident-service logs
+	$(COMPOSE) --profile app logs -f incident-service

@@ -172,6 +172,33 @@ to this platform as follows:
   using the same credentials configured in `.env`.
 - Application services will connect to PostgreSQL as `POSTGRES_APP_USER`
   (a non-superuser role), not as the bootstrap `POSTGRES_USER`.
-- No application tables exist yet in the `incidents`, `audit`, or
-  `runbooks` schemas — those will be introduced by the services that own
-  them, via their own migrations, in later phases.
+- No application tables exist yet in the `runbooks` schema. The
+  `incidents` and `audit` schemas now contain the tables introduced by
+  the incident service's own Flyway migrations (see below).
+
+## Incident service (Phase 3)
+
+`services/incident-service` is the first application service running
+on this platform. It is optional in local Compose runs, gated behind
+the `app` profile (`COMPOSE_PROFILES=console,app` in `.env`, or run
+`make incident-up` which enables it automatically), so an
+infrastructure-only `make infra-up` continues to work unchanged.
+
+- **Port**: `127.0.0.1:8081` (configurable via `INCIDENT_SERVICE_PORT`).
+- **Database**: connects to `postgres` as `POSTGRES_APP_USER`; owns and
+  migrates (via Flyway) the tables in the `incidents` and `audit`
+  schemas — see `services/incident-service/README.md` for the schema
+  details and `docs/api/incident-service.md` for the API.
+- **Events**: consumes `telemetry.anomaly.v1`; publishes
+  `incident.detected.v1` and `audit.event.v1` — see
+  `docs/events/incident-events.md`.
+- **Security**: no authentication yet — local-development boundary
+  only, never expose beyond `127.0.0.1`.
+
+```bash
+make incident-build   # compile, format-check, test, package
+make incident-image   # build the Docker image
+make incident-up      # start infra + the incident service
+make incident-logs
+make incident-down
+```

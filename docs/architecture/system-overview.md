@@ -36,8 +36,9 @@ Actors:
 |---|---|
 | OpenTelemetry Collector | Collects metrics, traces, and logs from monitored services and forwards them to storage/backends. |
 | Prometheus / Loki / Tempo / Alertmanager | Store and alert on metrics, logs, and traces respectively. |
+| **Incident Service (Java, implemented — Phase 3)** | Owns the incident aggregate and its lifecycle, records evidence and audit history, and publishes incident/audit events through a transactional outbox. See `services/incident-service/README.md`. |
 | Ingestion & Correlation Service (Java) | Normalizes and correlates telemetry, deployment events, and dependency metadata. |
-| Detection Engine (Java) | Evaluates SLOs, detects anomalies, and raises candidate incidents. |
+| Detection Engine (Java) | Evaluates SLOs, detects anomalies, and raises candidate incidents (published as `telemetry.anomaly.v1`, consumed by the Incident Service). |
 | Investigation Agent (Python, LangGraph) | Orchestrates root-cause investigation: gathers evidence, retrieves runbooks, and drafts findings. |
 | Hybrid Retrieval + Reranking | Retrieves relevant runbooks and historical incidents using combined lexical/vector search over pgvector, reranked for relevance. |
 | Local LLM inference (Ollama) | Provides the language model used for summarization and analysis, run entirely locally. |
@@ -82,7 +83,13 @@ sequenceDiagram
    deployment/dependency metadata and normalizes them into a common
    incident-evidence model, persisted in PostgreSQL.
 4. The Detection Engine evaluates this data against SLOs and anomaly
-   rules, publishing candidate incidents onto Redpanda.
+   rules, publishing candidate anomalies (`telemetry.anomaly.v1`) onto
+   Redpanda. **Implemented today (Phase 3):** the Incident Service
+   consumes this topic idempotently, creates the corresponding
+   incident, and publishes `incident.detected.v1` and `audit.event.v1`
+   through its transactional outbox — see
+   `docs/events/incident-events.md` and
+   [ADR 0007](../decisions/0007-transactional-outbox-pattern.md).
 5. The Investigation Agent consumes candidate incidents, retrieves
    relevant runbooks and historical incidents (pgvector-backed hybrid
    retrieval), and uses a local LLM to synthesize a root-cause analysis

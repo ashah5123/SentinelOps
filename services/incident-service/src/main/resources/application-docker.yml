@@ -1,0 +1,8 @@
+# Activated via SPRING_PROFILES_ACTIVE=docker when the incident service itself runs as a
+# container inside the sentinelops-net Compose network — connects to other services by their
+# container names instead of host-published localhost ports.
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/${POSTGRES_DB:sentinelops}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:redpanda:9092}

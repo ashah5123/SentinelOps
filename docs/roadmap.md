@@ -22,7 +22,7 @@ development standards. No application code.
   local tooling without installing or modifying anything.
 - [x] `make validate` passes for the checked-in state of the repository.
 
-## Phase 2 — Local data and event-streaming infrastructure (current)
+## Phase 2 — Local data and event-streaming infrastructure
 
 **Goal:** Stand up the free, local data and event-streaming
 infrastructure via Docker Compose, with no application services,
@@ -53,27 +53,60 @@ later phases so this phase stays small and testable.
   installed in the environment this phase was authored in. This must
   be completed and confirmed before Phase 2 is considered fully done.
 
-## Phase 3 — Observability baseline
+## Phase 3 — Incident management service (current)
 
-**Goal:** Stand up the OpenTelemetry Collector, Prometheus, Grafana,
-Loki, Tempo, and Alertmanager locally, with a minimal instrumented
-"hello world" Java and Python service to prove the pipeline end to end.
+**Goal:** Build a production-quality incident-management control-plane
+service (Java 21, Spring Boot). No frontend, AI investigator,
+authentication provider, Kubernetes deployment, or observability
+backend yet.
 
 **Acceptance criteria:**
-- A sample Java service and a sample Python service both emit metrics,
-  logs, and traces via OpenTelemetry.
+- [x] `Incident` aggregate with enforced lifecycle transitions
+  (`IncidentTransitions`), evidence, status history, immutable audit
+  records, transactional outbox, and idempotent-consumption tracking.
+- [x] Flyway migrations create all required tables, constraints, and
+  indexes in the existing `incidents`/`audit` schemas; no
+  Hibernate auto-DDL.
+- [x] Versioned REST API under `/api/v1` with DTOs (never JPA
+  entities), validation, pagination/filtering/sorting, RFC 9457
+  problem responses with stable error codes, `Idempotency-Key`
+  enforcement, and correlation-ID propagation.
+- [x] Consumes `telemetry.anomaly.v1` idempotently; publishes
+  `incident.detected.v1` and `audit.event.v1` through a transactional
+  outbox (ADR 0007), with bounded-retry + dead-letter handling for
+  inbound consumption (ADR 0008).
+- [x] Health/readiness/liveness endpoints; graceful shutdown; UTC
+  throughout; structured logs; no secrets logged.
+- [x] Multi-stage, non-root Dockerfile; integrated into the Phase 2
+  Compose environment behind an `app` profile.
+- [x] Unit tests (transitions, idempotency, correlation IDs, event
+  envelopes, audit) — 41 tests, all passing.
+- [x] Repository/migration and full integration/API tests written
+  against Testcontainers (PostgreSQL + Kafka-compatible broker).
+- [ ] Repository/migration and integration test **execution**, Docker
+  image build, and the full local smoke test (create → transition →
+  anomaly → outbox → duplicate-delivery check) — **blocked**: Docker
+  was not installed in the environment this phase was authored in.
+  This must be completed and confirmed before Phase 3 is considered
+  fully done.
+
+## Phase 4 — Observability baseline
+
+**Goal:** Stand up the OpenTelemetry Collector, Prometheus, Grafana,
+Loki, Tempo, and Alertmanager locally, and wire the incident service's
+existing structured logs/correlation IDs into real traces and metrics.
+
+**Acceptance criteria:**
+- The incident service emits metrics, logs, and traces via
+  OpenTelemetry.
 - Telemetry is visible in Grafana, sourced from Prometheus, Loki, and
   Tempo, with trace-to-log correlation demonstrated.
-- The sample services and dashboards are removed or clearly marked as
-  throwaway scaffolding once the pipeline is proven, per this
-  project's "no placeholder services" principle — or are promoted into
-  Phase 4 if they form real groundwork.
 
-## Phase 4 — Telemetry ingestion and correlation service
+## Phase 5 — Telemetry ingestion and correlation service
 
-**Goal:** Build the real Ingestion & Correlation Service (Java) that
+**Goal:** Build the Ingestion & Correlation Service (Java) that
 normalizes telemetry, deployment events, and dependency metadata into
-a shared incident-evidence model in PostgreSQL.
+a shared incident-evidence model, feeding the incident service.
 
 **Acceptance criteria:**
 - Service ingests from Prometheus/Loki/Tempo and a deployment-event
@@ -82,7 +115,7 @@ a shared incident-evidence model in PostgreSQL.
   ingestion and normalization logic.
 - API contract is documented (OpenAPI) and covered by contract tests.
 
-## Phase 5 — Detection engine
+## Phase 6 — Detection engine
 
 **Goal:** Implement SLO evaluation and anomaly detection that raises
 candidate incidents onto Redpanda.
@@ -96,7 +129,7 @@ candidate incidents onto Redpanda.
 - Controlled failure testing demonstrates detection against injected
   faults.
 
-## Phase 6 — Investigation agent and retrieval
+## Phase 7 — Investigation agent and retrieval
 
 **Goal:** Build the Python/LangGraph Investigation Agent, hybrid
 retrieval over runbooks and historical incidents, and integration with
@@ -110,7 +143,7 @@ local Ollama inference.
 - All inference runs against local Ollama models by default; no paid
   API calls are required for the default configuration.
 
-## Phase 7 — Human approval workflow and remediation recommendations
+## Phase 8 — Human approval workflow and remediation recommendations
 
 **Goal:** Implement the Human Approval Gate as a hard architectural
 boundary, per [ADR 0004](decisions/0004-human-approved-remediation.md).
@@ -122,7 +155,7 @@ boundary, per [ADR 0004](decisions/0004-human-approved-remediation.md).
 - Failure of the approval or identity subsystem blocks remediation
   (fail closed), verified by controlled failure testing.
 
-## Phase 8 — Operator dashboard and auditable reporting
+## Phase 9 — Operator dashboard and auditable reporting
 
 **Goal:** Build the Next.js/React operator dashboard and the incident
 report generator.
@@ -135,7 +168,7 @@ report generator.
   and human-readable, with all claims traceable to underlying
   evidence.
 
-## Phase 9 — Kubernetes packaging and optional AWS deployment mapping
+## Phase 10 — Kubernetes packaging and optional AWS deployment mapping
 
 **Goal:** Package the full stack for `kind`/Kubernetes via Helm, and
 document (without provisioning) an optional AWS deployment mapping.

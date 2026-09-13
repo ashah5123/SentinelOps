@@ -1,0 +1,16 @@
+package com.sentinelops.incident.web.error;
+
+/** Stable, machine-readable error codes surfaced in every problem-detail response. */
+public final class ErrorCode {
+
+  public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
+  public static final String MALFORMED_REQUEST = "MALFORMED_REQUEST";
+  public static final String INCIDENT_NOT_FOUND = "INCIDENT_NOT_FOUND";
+  public static final String ILLEGAL_TRANSITION = "ILLEGAL_TRANSITION";
+  public static final String IDEMPOTENCY_KEY_MISSING = "IDEMPOTENCY_KEY_MISSING";
+  public static final String IDEMPOTENCY_KEY_CONFLICT = "IDEMPOTENCY_KEY_CONFLICT";
+  public static final String REQUEST_TOO_LARGE = "REQUEST_TOO_LARGE";
+  public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+
+  private ErrorCode() {}
+}
