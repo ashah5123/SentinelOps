@@ -2,8 +2,10 @@
 
 **Cloud-native incident detection and investigation platform.**
 
-Status: **Foundation** — repository scaffolding, architecture, and
-development standards only. No application services are implemented yet.
+Status: **Foundation** — repository scaffolding, architecture, and a
+local data/event-streaming platform (Phase 2). No application services,
+authentication, Kubernetes, observability stack, or AI functionality are
+implemented yet.
 
 ## Overview
 
@@ -157,9 +159,9 @@ provisioned by this project by default.
 See [`docs/roadmap.md`](docs/roadmap.md) for the full, phased roadmap
 with acceptance criteria. In summary:
 
-1. **Foundation** (current) — repository, architecture, standards.
-2. Local infrastructure baseline (Compose stack for data stores,
-   observability, identity).
+1. Foundation — repository, architecture, standards. *(complete)*
+2. **Local data and event-streaming infrastructure** (current) —
+   Compose stack for PostgreSQL/pgvector, Redis, Redpanda, and MinIO.
 3. Telemetry ingestion and correlation service.
 4. Detection engine and SLO evaluation.
 5. Investigation agent, retrieval, and root-cause analysis.
@@ -171,13 +173,86 @@ with acceptance criteria. In summary:
 
 - [System overview](docs/architecture/system-overview.md)
 - [Architecture Decision Records](docs/decisions/)
+- [Local platform reference](docs/development/local-platform.md)
+
+## Local platform (Phase 2)
+
+Phase 2 adds a free, local data and event-streaming platform, running
+entirely through Docker Compose: PostgreSQL with pgvector, Redis,
+Redpanda (Kafka-compatible), an optional Redpanda Console, and MinIO.
+**This runs entirely on your machine — no AWS or other cloud charges
+are ever incurred by anything in this repository.**
+
+### Prerequisites
+
+- Docker Desktop (or an equivalent Docker Engine + Compose v2 install)
+- `bash` (present by default on macOS)
+
+Run `make doctor` to check these and the rest of the project's
+prerequisites without installing or modifying anything.
+
+### Local environment setup
+
+```bash
+cp .env.example .env
+# edit .env and replace every "change-me-local-dev-only" placeholder
+```
+
+`.env` is git-ignored and must never be committed.
+
+### Starting and stopping the platform
+
+```bash
+make infra-config   # validate the Compose configuration
+make infra-up       # start core services, wait for healthy, init topics/buckets
+make infra-status   # show service status/health
+make infra-smoke    # run the full smoke test
+make infra-down     # stop containers, keep persistent volumes
+```
+
+### Service endpoints (all bound to `127.0.0.1` only)
+
+| Service | Default local endpoint |
+|---|---|
+| PostgreSQL | `127.0.0.1:5432` |
+| Redis | `127.0.0.1:6379` |
+| Redpanda (Kafka API) | `127.0.0.1:19092` |
+| Redpanda Admin API | `127.0.0.1:9644` |
+| Redpanda Console (optional) | http://127.0.0.1:8080 |
+| MinIO API | http://127.0.0.1:9000 |
+| MinIO Console | http://127.0.0.1:9001 |
+
+Ports are configurable via `.env` — see
+[`docs/development/local-platform.md`](docs/development/local-platform.md).
+
+### Health verification
+
+`make infra-up` waits for every core service's Docker health check to
+pass before returning. `make infra-smoke` additionally verifies
+pgvector, required schemas/topics/buckets, authentication, and that no
+service is exposed beyond localhost. See
+[`docs/development/local-platform.md`](docs/development/local-platform.md)
+for what each check does.
+
+### Troubleshooting
+
+See the "Common macOS issues" section of
+[`docs/development/local-platform.md`](docs/development/local-platform.md)
+for Docker availability, port conflicts, and Apple Silicon notes.
+
+### ⚠️ Data-reset warning
+
+`make infra-clean` **permanently deletes** all local platform data
+(PostgreSQL, Redis, Redpanda, and MinIO volumes) after an interactive
+`yes` confirmation. `make infra-down` does **not** delete data — use it
+for routine stop/start cycles.
 
 ## Project status
 
-**Foundation.** This repository currently contains only repository
-scaffolding, documentation, and development standards. No services,
-integrations, tests, or deployments described above are implemented
-yet.
+**Foundation.** Repository scaffolding, architecture documentation, and
+a local data/event-streaming platform (Phase 2) exist. No application
+services, authentication, Kubernetes, observability stack, or AI
+functionality described above are implemented yet.
 
 ## Author
 

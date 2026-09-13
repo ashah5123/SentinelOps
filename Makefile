@@ -1,9 +1,22 @@
-.PHONY: help doctor validate
+.PHONY: help doctor validate infra-config infra-pull infra-up infra-down infra-status infra-logs infra-smoke infra-clean
+
+ENV_FILE := .env
+COMPOSE_FILE := infrastructure/docker/docker-compose.yml
+COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
+CORE_SERVICES := postgres redis redpanda minio
 
 help: ## Show available targets
 	@echo "SentinelOps — available targets:"
-	@echo "  make doctor    Check local prerequisites (read-only, installs nothing)"
-	@echo "  make validate  Run formatting/safety checks against the repository"
+	@echo "  make doctor        Check local prerequisites (read-only, installs nothing)"
+	@echo "  make validate      Run formatting/safety checks against the repository"
+	@echo "  make infra-config  Validate the local platform Compose configuration"
+	@echo "  make infra-pull    Pull pinned platform images"
+	@echo "  make infra-up      Start the local platform and wait for healthy services"
+	@echo "  make infra-down    Stop the local platform, keeping persistent volumes"
+	@echo "  make infra-status  Show local platform service status/health"
+	@echo "  make infra-logs    Show recent local platform logs"
+	@echo "  make infra-smoke   Run the full local platform smoke test"
+	@echo "  make infra-clean   Permanently delete local platform containers AND volumes (asks first)"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -53,3 +66,53 @@ validate: ## Run formatting/safety checks that require no downloaded tooling
 		echo "OK: no trailing whitespace found"; \
 	fi
 	@echo "== validation complete =="
+
+## ---- Phase 2: local platform infrastructure lifecycle ----
+##
+## All targets below operate only on the SentinelOps Compose project
+## (named "sentinelops", network "sentinelops-net", volumes prefixed
+## "sentinelops-"). They never touch unrelated Docker resources.
+
+infra-config: ## Validate the Compose configuration
+	@test -f $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) not found. Run: cp .env.example .env" && exit 1)
+	$(COMPOSE) config --quiet
+	@echo "OK: compose configuration is valid"
+
+infra-pull: infra-config ## Pull pinned platform images
+	$(COMPOSE) pull
+
+infra-up: infra-config ## Start the core local platform and wait for healthy services
+	$(COMPOSE) up -d --wait $(CORE_SERVICES)
+	$(COMPOSE) up --exit-code-from redpanda-topics-init redpanda-topics-init
+	$(COMPOSE) up --exit-code-from minio-bucket-init minio-bucket-init
+	@if [ -z "$${COMPOSE_PROFILES+x}" ] || [ -n "$${COMPOSE_PROFILES}" ]; then \
+		echo "starting optional Redpanda Console..."; \
+		$(COMPOSE) --profile console up -d --wait redpanda-console; \
+	fi
+	@echo "SentinelOps local platform is up."
+
+infra-down: infra-config ## Stop the platform without deleting persistent volumes
+	$(COMPOSE) --profile console down
+	@echo "SentinelOps local platform stopped. Volumes were preserved."
+
+infra-status: infra-config ## Show service status and health
+	$(COMPOSE) --profile console ps
+
+infra-logs: infra-config ## Show recent logs (review before sharing externally)
+	$(COMPOSE) --profile console logs --tail=100
+
+infra-smoke: ## Run the complete platform smoke test
+	@bash infrastructure/docker/scripts/smoke-test.sh
+
+infra-clean: infra-config ## DESTROYS local platform containers and volumes (interactive confirmation required)
+	@echo "This will permanently delete the SentinelOps local platform containers"
+	@echo "AND its persistent volumes (sentinelops-postgres-data, sentinelops-redis-data,"
+	@echo "sentinelops-redpanda-data, sentinelops-minio-data). This cannot be undone."
+	@printf "Type 'yes' to continue: "; \
+	read -r confirm; \
+	if [ "$$confirm" = "yes" ]; then \
+		$(COMPOSE) --profile console down --volumes; \
+		echo "SentinelOps local platform containers and volumes removed."; \
+	else \
+		echo "Aborted. Nothing was changed."; \
+	fi

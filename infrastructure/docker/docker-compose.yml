@@ -1,0 +1,190 @@
+name: sentinelops
+
+# SentinelOps local data and event-streaming platform (Phase 2).
+#
+# Runs entirely on local resources with no paid APIs or cloud dependencies.
+# All host port bindings are restricted to 127.0.0.1. See docs/development/
+# local-platform.md for a full description of each component.
+
+networks:
+  sentinelops-net:
+    name: sentinelops-net
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: sentinelops-postgres-data
+  redis-data:
+    name: sentinelops-redis-data
+  redpanda-data:
+    name: sentinelops-redpanda-data
+  minio-data:
+    name: sentinelops-minio-data
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sentinelops-postgres
+    env_file:
+      - ../../.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks: [sentinelops-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: sentinelops-redis
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks: [sentinelops-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.18
+    container_name: sentinelops-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://127.0.0.1:${REDPANDA_KAFKA_EXTERNAL_PORT:-19092}
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "127.0.0.1:${REDPANDA_KAFKA_EXTERNAL_PORT:-19092}:19092"
+      - "127.0.0.1:${REDPANDA_ADMIN_PORT:-9644}:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks: [sentinelops-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1.5G
+
+  redpanda-topics-init:
+    image: redpandadata/redpanda:v24.2.18
+    container_name: sentinelops-redpanda-topics-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      REDPANDA_BROKERS: redpanda:9092
+      REDPANDA_TOPIC_PARTITIONS: ${REDPANDA_TOPIC_PARTITIONS:-3}
+      REDPANDA_TOPIC_RETENTION_MS: ${REDPANDA_TOPIC_RETENTION_MS:-604800000}
+      REDPANDA_TOPIC_MAX_MESSAGE_BYTES: ${REDPANDA_TOPIC_MAX_MESSAGE_BYTES:-1048576}
+    volumes:
+      - ./redpanda/init-topics.sh:/scripts/init-topics.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/init-topics.sh"]
+    networks: [sentinelops-net]
+    restart: "no"
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: sentinelops-redpanda-console
+    profiles: ["console"]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "127.0.0.1:${REDPANDA_CONSOLE_PORT:-8080}:8080"
+    networks: [sentinelops-net]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    container_name: sentinelops-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks: [sentinelops-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  minio-bucket-init:
+    image: minio/mc:RELEASE.2024-10-02T08-27-28Z
+    container_name: sentinelops-minio-bucket-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ./minio/init-buckets.sh:/scripts/init-buckets.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/init-buckets.sh"]
+    networks: [sentinelops-net]
+    restart: "no"

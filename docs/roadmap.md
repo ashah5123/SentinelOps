@@ -5,35 +5,53 @@ A phase is not considered complete until its acceptance criteria are
 met. This roadmap will be revised as phases complete and new
 information emerges.
 
-## Phase 1 — Foundation (current)
+## Phase 1 — Foundation (complete)
 
 **Goal:** Establish repository structure, architecture, and
 development standards. No application code.
 
 **Acceptance criteria:**
-- Repository initialized with `main` as the default branch, correct
+- [x] Repository initialized with `main` as the default branch, correct
   local author configuration, and no secrets committed.
-- `.gitignore`, `.editorconfig`, `.gitattributes`, `.env.example`,
+- [x] `.gitignore`, `.editorconfig`, `.gitattributes`, `.env.example`,
   `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, and `README.md` exist
   and accurately describe the current (foundation-only) state.
-- Architecture is documented (`docs/architecture/system-overview.md`)
+- [x] Architecture is documented (`docs/architecture/system-overview.md`)
   and at least the initial set of ADRs are recorded.
-- `make doctor` accurately reports the presence/absence of required
+- [x] `make doctor` accurately reports the presence/absence of required
   local tooling without installing or modifying anything.
-- `make validate` passes for the checked-in state of the repository.
+- [x] `make validate` passes for the checked-in state of the repository.
 
-## Phase 2 — Local infrastructure baseline
+## Phase 2 — Local data and event-streaming infrastructure (current)
 
-**Goal:** Stand up the local, zero-cost infrastructure stack via
-Docker Compose, with no application services yet.
+**Goal:** Stand up the free, local data and event-streaming
+infrastructure via Docker Compose, with no application services,
+authentication, Kubernetes, observability stack, or AI functionality
+yet. Identity (Keycloak) and the observability stack are deferred to
+later phases so this phase stays small and testable.
 
 **Acceptance criteria:**
-- `docker compose up` brings up PostgreSQL (with pgvector extension),
-  Redis, MinIO, Redpanda, and Keycloak, all reachable on documented
-  local ports.
-- Each service has a working health check.
-- Configuration is sourced from `.env`, derived from `.env.example`.
-- Bringing the stack up and down is documented and reproducible.
+- [x] Docker Compose configuration defines PostgreSQL (with pgvector),
+  Redis, Redpanda, Redpanda Console (optional profile), and MinIO,
+  with pinned image versions, localhost-only port bindings, named
+  volumes, health checks, and conservative resource limits.
+- [x] PostgreSQL initialization creates a non-superuser application
+  role and the `incidents`, `audit`, and `runbooks` schemas, with the
+  `vector` extension enabled — no application tables yet.
+- [x] Redpanda topic initialization and MinIO bucket initialization
+  are idempotent and run automatically via one-time init containers.
+- [x] `.env.example` documents every Phase 2 variable with safe,
+  clearly-labeled local placeholders.
+- [x] `Makefile` provides `infra-config`, `infra-pull`, `infra-up`,
+  `infra-down`, `infra-status`, `infra-logs`, `infra-smoke`, and
+  `infra-clean`, and a full smoke-test script exists.
+- [x] Documentation (`README.md`, `docs/development/local-platform.md`,
+  ADR 0006) describes the platform, its ports/volumes/topics/buckets,
+  and safe cleanup.
+- [ ] End-to-end runtime verification (`make infra-up`, full smoke
+  test pass, restart-and-persist check) — **blocked**: Docker was not
+  installed in the environment this phase was authored in. This must
+  be completed and confirmed before Phase 2 is considered fully done.
 
 ## Phase 3 — Observability baseline
 
