@@ -1,0 +1,71 @@
+# Overrides for Testcontainers-backed tests. Datasource/Kafka connection details are injected
+# at runtime via @DynamicPropertySource in the relevant base test classes.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    schemas: telemetry
+    default-schema: telemetry
+
+sentinelops:
+  telemetry:
+    producer-name: telemetry-correlation-service-test
+    monitored-services: incident-service
+    prometheus:
+      base-url: http://localhost:19090
+      connect-timeout: 1s
+      read-timeout: 2s
+      max-retries: 1
+      retry-backoff: 100ms
+      max-response-bytes: 1048576
+    loki:
+      base-url: http://localhost:13100
+      connect-timeout: 1s
+      read-timeout: 2s
+      max-retries: 1
+      retry-backoff: 100ms
+      max-response-bytes: 1048576
+    tempo:
+      base-url: http://localhost:13200
+      connect-timeout: 1s
+      read-timeout: 2s
+      max-retries: 1
+      retry-backoff: 100ms
+      max-response-bytes: 1048576
+    prometheus-queries:
+      request_rate: "sum(rate(http_server_requests_seconds_count{job=\"%s\"}[1m]))"
+    loki-query: "{service=\"%s\"}"
+    tempo-service-tag: "service.name"
+    ingestion:
+      polling-interval: 500ms
+      query-window: 60s
+      overlap-window: 15s
+      max-records-per-cycle: 500
+      batch-size: 50
+    correlation:
+      window: 15m
+      max-dependency-depth: 1
+      max-evidence-results: 25
+      weights:
+        affected-service-match: 40
+        time-proximity: 20
+        trace-id-match: 30
+        correlation-id-match: 25
+        recent-deployment: 20
+        dependency-connection: 15
+        error-or-failed-status: 15
+        elevated-metric: 10
+    outbox:
+      polling-interval: 500ms
+      batch-size: 50
+      max-attempts: 3
+      initial-backoff: 200ms
+      max-backoff: 2s
+      retention-after-publish: 24h
+    consumer:
+      max-retries: 3
+
+logging:
+  level:
+    com.sentinelops: DEBUG

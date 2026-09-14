@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelops.dev/schemas/deployment-changed.v1.schema.json",
+  "title": "deployment.changed.v1 payload",
+  "type": "object",
+  "required": ["deploymentId", "serviceName", "version", "environment", "status", "startedAt", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "deploymentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "serviceName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,148}[a-z0-9])?$",
+      "maxLength": 150
+    },
+    "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "environment": { "type": "string", "minLength": 1, "maxLength": 50 },
+    "status": { "type": "string", "enum": ["STARTED", "SUCCEEDED", "FAILED", "ROLLED_BACK"] },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": ["string", "null"], "format": "date-time" },
+    "source": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "rollbackOfDeploymentId": { "type": ["string", "null"], "maxLength": 128 }
+  }
+}

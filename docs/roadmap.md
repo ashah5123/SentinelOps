@@ -90,7 +90,7 @@ backend yet.
   This must be completed and confirmed before Phase 3 is considered
   fully done.
 
-## Phase 4 — Observability baseline (current)
+## Phase 4 — Observability baseline
 
 **Goal:** Stand up the OpenTelemetry Collector, Prometheus, Grafana,
 Loki, Tempo, and Alertmanager locally, and wire the incident service's
@@ -138,18 +138,66 @@ existing structured logs/correlation IDs into real traces and metrics.
   see `docs/development/observability.md`'s implementation-status
   section for the exact list.
 
-## Phase 5 — Telemetry ingestion and correlation service
+## Phase 5 — Telemetry ingestion and correlation service (current)
 
 **Goal:** Build the Ingestion & Correlation Service (Java) that
 normalizes telemetry, deployment events, and dependency metadata into
 a shared incident-evidence model, feeding the incident service.
 
 **Acceptance criteria:**
-- Service ingests from Prometheus/Loki/Tempo and a deployment-event
-  source, and persists normalized evidence records.
-- Unit tests (JUnit) and integration tests (Testcontainers) cover the
-  ingestion and normalization logic.
-- API contract is documented (OpenAPI) and covered by contract tests.
+- [x] Service ingests from Prometheus/Loki/Tempo (per-source adapters
+  with bounded retry, circuit breakers, and response-size limits) and
+  a deployment-event source (`deployment.changed.v1`), and persists
+  normalized evidence records with deterministic fingerprint-based
+  deduplication and checkpointed, overlap-window incremental polling
+  (see ADR 0010).
+- [x] Consumes `service.dependency.changed.v1` idempotently, maintains
+  the current service-dependency graph with full change history, and
+  rejects self-dependency while allowing valid dependency cycles.
+- [x] On `incident.detected.v1`, runs deterministic (rule-based, no
+  AI/ML) correlation — evidence proximity, matching trace/correlation
+  IDs, recent deployments, and dependency-connected services — with
+  configurable weights and a persisted, human-readable explanation per
+  scored evidence record.
+- [x] Publishes `incident.evidence.correlated.v1` through a
+  transactional outbox; the incident service consumes it idempotently
+  and appends evidence to the correct incident without ever
+  overwriting operator-recorded evidence.
+- [x] Dedicated `telemetry` PostgreSQL schema, provisioned idempotently
+  for both new and pre-existing Postgres volumes; Flyway-managed
+  tables (no Hibernate auto-DDL) for evidence, deployments,
+  dependencies (current + history), correlation results, ingestion
+  checkpoints, processed events, and the outbox.
+- [x] Versioned REST API (`/api/v1`) for evidence, deployments,
+  dependencies, and correlation results, with pagination, filtering,
+  RFC 9457 errors, and OpenAPI documentation; a manual-ingestion
+  endpoint gated to the `local-dev` profile only.
+- [x] Unit tests (JUnit) covering normalization, fingerprinting,
+  checkpoint behavior, correlation scoring, dependency-graph
+  validation/traversal, and field sanitization; JSON Schema contract
+  tests for every new event payload; integration tests (Testcontainers
+  — PostgreSQL and Kafka-compatible broker) for migrations, repository
+  behavior, and idempotent Kafka consumption.
+- [x] Instrumented through the existing Phase 4 observability stack
+  (custom metrics, traces, structured logs); Prometheus scrape config,
+  Grafana dashboard panels, and alert rules added for the new service.
+- [x] Added to the Compose `app` profile with a multi-stage Docker
+  build, non-root user, health checks, resource limits, and a
+  localhost-only port; `Makefile` targets and an idempotent Phase 5
+  smoke test (`correlation-smoke-test.sh`) added, none of which delete
+  persistent volumes.
+- [ ] End-to-end runtime verification (`make correlation-up`, full
+  correlation smoke-test pass, a real ingestion cycle producing
+  persisted evidence, a real correlation result reaching the incident
+  service, Grafana panels rendering live data, Testcontainers
+  integration tests actually executing) — **blocked**: Docker was not
+  installed in the environment this phase was authored in. Static
+  validation (Maven `verify` excluding Docker-dependent tests, YAML/
+  JSON Schema parsing, and the Maven package build for both this
+  service and the incident service) was completed and passes. This
+  must be completed and confirmed before Phase 5 is considered fully
+  done — see `services/telemetry-correlation-service/README.md`'s
+  known-limitations section for the exact list.
 
 ## Phase 6 — Detection engine
 

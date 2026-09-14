@@ -209,3 +209,25 @@ A separate, opt-in `observability` Compose profile (OpenTelemetry
 Collector, Prometheus, Grafana, Loki, Tempo, Alertmanager) is wired
 into the incident service's metrics, traces, and structured logs. It
 has its own document: [`docs/development/observability.md`](observability.md).
+
+## Telemetry correlation service (Phase 5)
+
+`services/telemetry-correlation-service` is the second application
+service on this platform, also gated behind the `app` profile
+(started automatically by `make correlation-up`, alongside
+`make incident-up`). It owns its own `telemetry` PostgreSQL schema
+(provisioned by the `postgres-schema-init` one-shot Compose service,
+which — unlike the Phase 2 `docker-entrypoint-initdb.d` scripts — runs
+on every `docker compose up` so it also works against a Postgres
+volume created before this phase existed), and consumes/produces its
+own Kafka topics (`deployment.changed.v1`,
+`service.dependency.changed.v1`, `incident.evidence.correlated.v1`,
+plus their `.dlq` topics).
+
+- **Port**: `127.0.0.1:8082` (configurable via
+  `TELEMETRY_CORRELATION_SERVICE_PORT`).
+- **Security**: no authentication yet — same local-development
+  boundary as the incident service.
+
+Full details: `services/telemetry-correlation-service/README.md` and
+`docs/development/observability.md` (for its metrics/traces/logs).

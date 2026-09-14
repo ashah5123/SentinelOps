@@ -37,7 +37,7 @@ Actors:
 | **OpenTelemetry Collector (implemented — Phase 4)** | Receives OTLP traces/logs from the incident service and forwards traces to Tempo and logs to Loki; also exposes received metrics as a Prometheus scrape target. Local-only — see `docs/development/observability.md`. |
 | **Prometheus / Loki / Tempo / Alertmanager (implemented — Phase 4)** | Store and alert on metrics, logs, and traces respectively, for the incident service only so far — no other service exists yet to monitor. |
 | **Incident Service (Java, implemented — Phase 3; instrumented — Phase 4)** | Owns the incident aggregate and its lifecycle, records evidence and audit history, and publishes incident/audit events through a transactional outbox. Emits its own metrics, traces, and structured logs via Micrometer/OpenTelemetry. See `services/incident-service/README.md`. |
-| Ingestion & Correlation Service (Java) | Normalizes and correlates telemetry, deployment events, and dependency metadata. |
+| **Ingestion & Correlation Service (Java, implemented — Phase 5)** | Incrementally ingests Prometheus/Loki/Tempo telemetry and deployment/dependency events into a shared evidence model, and deterministically (rule-based, no AI/ML) correlates evidence against detected incidents, publishing results back to the Incident Service through a transactional outbox. See `services/telemetry-correlation-service/README.md`. |
 | Detection Engine (Java) | Evaluates SLOs, detects anomalies, and raises candidate incidents (published as `telemetry.anomaly.v1`, consumed by the Incident Service). |
 | Investigation Agent (Python, LangGraph) | Orchestrates root-cause investigation: gathers evidence, retrieves runbooks, and drafts findings. |
 | Hybrid Retrieval + Reranking | Retrieves relevant runbooks and historical incidents using combined lexical/vector search over pgvector, reranked for relevance. |
@@ -82,11 +82,22 @@ sequenceDiagram
    structured logs — see `docs/development/observability.md` and
    [ADR 0009](../decisions/0009-local-observability-stack-topology.md).
 2. The collector routes metrics to Prometheus, logs to Loki, and traces
-   to Tempo. **Implemented today (Phase 4)** for the Incident Service's
-   own telemetry; no other monitored service exists yet.
+   to Tempo. **Implemented today (Phase 4/5)** for both the Incident
+   Service's and the Ingestion & Correlation Service's own telemetry.
 3. The Ingestion & Correlation Service reads from these backends plus
    deployment/dependency metadata and normalizes them into a common
-   incident-evidence model, persisted in PostgreSQL.
+   incident-evidence model, persisted in PostgreSQL. **Implemented
+   today (Phase 5):** incremental, checkpointed polling of
+   Prometheus/Loki/Tempo, idempotent consumption of
+   `deployment.changed.v1` and `service.dependency.changed.v1`, and —
+   once an incident exists (see step 4) — deterministic, rule-based
+   correlation of that evidence against it, published as
+   `incident.evidence.correlated.v1` through a transactional outbox and
+   consumed idempotently by the Incident Service. See
+   `docs/events/telemetry-correlation-events.md` and
+   [ADR 0010](../decisions/0010-incremental-ingestion-and-correlation.md).
+   Correlation scores are rule-based proximity/connection signals, never
+   a confirmed root cause.
 4. The Detection Engine evaluates this data against SLOs and anomaly
    rules, publishing candidate anomalies (`telemetry.anomaly.v1`) onto
    Redpanda. **Implemented today (Phase 3):** the Incident Service

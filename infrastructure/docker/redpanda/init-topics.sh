@@ -14,6 +14,8 @@ TOPICS=(
   "incident.detected.v1"
   "telemetry.anomaly.v1"
   "deployment.changed.v1"
+  "service.dependency.changed.v1"
+  "incident.evidence.correlated.v1"
   "remediation.requested.v1"
   "remediation.completed.v1"
   "audit.event.v1"
@@ -25,6 +27,9 @@ TOPICS=(
 DLQ_TOPICS=(
   "incident.detected.v1.dlq"
   "telemetry.anomaly.v1.dlq"
+  "deployment.changed.v1.dlq"
+  "service.dependency.changed.v1.dlq"
+  "incident.evidence.correlated.v1.dlq"
   "remediation.requested.v1.dlq"
   "remediation.completed.v1.dlq"
 )

@@ -71,6 +71,7 @@ without the other.
 | OpenTelemetry Collector (OTLP/gRPC) | http://127.0.0.1:4317 (`OTEL_COLLECTOR_GRPC_PORT`) | Where the incident service (or a host-run instance) sends telemetry. |
 | OpenTelemetry Collector (OTLP/HTTP) | http://127.0.0.1:4318 (`OTEL_COLLECTOR_HTTP_PORT`) | HTTP alternative to the gRPC endpoint. |
 | incident-service Actuator | http://127.0.0.1:8081/actuator/prometheus | Raw scraped metrics, for debugging what Prometheus sees. |
+| telemetry-correlation-service Actuator | http://127.0.0.1:8082/actuator/prometheus | Same, for the Phase 5 telemetry-correlation service. |
 
 ## How metrics, logs, and traces flow
 
@@ -125,6 +126,26 @@ value.
 | `sentinelops.anomaly.events.processed` | counter | `outcome` (`created`\|`duplicate`\|`failed`) | Outcomes of consuming `telemetry.anomaly.v1`. |
 | `sentinelops.outbox.published` | counter | `topic`, `outcome` (`success`\|`failure`) | Transactional outbox publish attempts. |
 | `sentinelops.outbox.publish.duration` | timer | `topic` | Time to publish one outbox event to Kafka. |
+
+**telemetry-correlation-service (Phase 5):**
+
+| Metric | Type | Tags | Meaning |
+|---|---|---|---|
+| `sentinelops.telemetry.records.ingested` | counter | `source` (`PROMETHEUS`\|`LOKI`\|`TEMPO`), `evidence_type` | Normalized evidence records ingested per polling cycle. |
+| `sentinelops.telemetry.records.duplicate` | counter | `source` | Records rejected as duplicates (fingerprint already existed). |
+| `sentinelops.telemetry.polling.duration` | timer | `source` | Duration of one polling cycle. |
+| `sentinelops.telemetry.polling.failures` | counter | `source` | Polling cycles that failed before persistence completed. |
+| `sentinelops.telemetry.backend.query.failures` | counter | `source` | Backend HTTP query failures. |
+| `sentinelops.telemetry.deployment.events.processed` | counter | `outcome` | Deployment-change events processed. |
+| `sentinelops.telemetry.dependency.events.processed` | counter | `operation`, `outcome` | Dependency-change events processed. |
+| `sentinelops.telemetry.incidents.correlated` | counter | `outcome` (`correlated`\|`duplicate`\|`failed`) | Incident-detected events processed by the correlation engine. |
+| `sentinelops.telemetry.correlation.evidence.selected` | counter | `evidence_type` | Evidence records selected by a correlation run. |
+| `sentinelops.telemetry.correlation.duration` | timer | — | Time to evaluate one correlation run. |
+| `sentinelops.telemetry.outbox.published` | counter | `topic`, `outcome` | Same pattern as the incident service's own outbox metric. |
+
+Resilience4j additionally auto-registers `resilience4j_circuitbreaker_state` (and related
+call/duration metrics) tagged by circuit-breaker `name` (`prometheus`, `loki`, `tempo`) —
+useful for the "backend availability" dashboard panel below.
 
 ## Finding a request across Grafana, Tempo, and Loki
 
@@ -274,24 +295,26 @@ stop profiles you're not actively using.
 ## Current implementation status and remaining limitations
 
 - **Implemented**: the full Collector → Prometheus/Loki/Tempo/Alertmanager
-  → Grafana pipeline; incident-service metrics, traces, and structured
-  logs; two provisioned Grafana dashboards; Prometheus alerting rules;
-  an idempotent smoke test; unit tests for the new metrics/tracing
-  helpers.
+  → Grafana pipeline; incident-service AND telemetry-correlation-service
+  metrics, traces, and structured logs; provisioned Grafana dashboards
+  (including Phase 5 panels for ingestion rate/lag, source failures,
+  duplicate percentage, correlation processing, and outbox failures);
+  Prometheus alerting rules for both services; idempotent smoke tests
+  for both phases; unit tests for the new metrics/tracing helpers.
 - **Blocked in the environment this phase was authored in**: Docker
   was not installed, so no container was actually built, started, or
   scraped, and the end-to-end runtime acceptance criteria in the
-  Phase 4 validation checklist (containers healthy, Prometheus targets
-  up, a real trace/log visible, Grafana dashboards rendering live
-  data, alert rules loaded, restart-and-persist check) have **not**
-  been executed or confirmed. `make observability-config` (static
-  Compose validation), all YAML/JSON config parsing, the Maven build,
-  and the full non-Docker unit test suite have been run and pass. This
-  must be completed and confirmed, exactly like the outstanding Phase
-  2 and Phase 3 runtime-verification items, before Phase 4 is
-  considered fully done.
-- **Not in scope for Phase 4** (deferred to later phases per the
-  roadmap): SLO evaluation/anomaly detection (Phase 6), the telemetry
-  ingestion and correlation service (Phase 5), any AI-driven analysis
-  of this telemetry, authentication in front of any of these UIs, and
+  Phase 4/5 validation checklists (containers healthy, Prometheus
+  targets up, a real trace/log visible, Grafana dashboards rendering
+  live data, alert rules loaded, restart-and-persist check) have
+  **not** been executed or confirmed. `make observability-config`
+  (static Compose validation), all YAML/JSON config parsing, the
+  Maven build, and the full non-Docker unit test suite have been run
+  and pass. This must be completed and confirmed, exactly like the
+  outstanding Phase 2, Phase 3, and Phase 5 runtime-verification
+  items, before Phase 4 (and Phase 5) is considered fully done.
+- **Not in scope for Phase 4 or Phase 5** (deferred to later phases
+  per the roadmap): SLO evaluation/anomaly detection (Phase 6), any
+  AI-driven analysis of this telemetry (Phase 7), authentication in
+  front of any of these UIs, and
   Kubernetes packaging (Phase 10). None of that is implemented here.

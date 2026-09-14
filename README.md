@@ -4,12 +4,12 @@
 
 Status: **Foundation** — repository scaffolding, architecture, a
 local data/event-streaming platform (Phase 2), an incident-management
-control-plane service (Phase 3), and a local observability baseline
+control-plane service (Phase 3), a local observability baseline
 (Phase 4: OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo,
-Alertmanager, wired into the incident service's own metrics, traces,
-and structured logs). No authentication, Kubernetes, AI/investigation
-functionality, frontend, telemetry ingestion/correlation service, or
-remediation execution are implemented yet. See
+Alertmanager), and a telemetry ingestion and deterministic correlation
+service (Phase 5). No authentication, Kubernetes, SLO/anomaly
+detection, AI/investigation functionality, frontend, or remediation
+execution are implemented yet. See
 [docs/roadmap.md](docs/roadmap.md) for current phase status, including
 outstanding runtime-verification items.
 
@@ -299,14 +299,37 @@ list, data-flow diagram, and how to trace a single request across
 Grafana/Tempo/Loki: [`docs/development/observability.md`](docs/development/observability.md).
 Architecture rationale: [ADR 0009](docs/decisions/0009-local-observability-stack-topology.md).
 
+## Telemetry correlation service (Phase 5)
+
+Phase 5 adds `services/telemetry-correlation-service`, a Java 21 / Spring Boot service that
+incrementally ingests Prometheus/Loki/Tempo telemetry, consumes deployment and
+service-dependency events, and deterministically (rule-based, no AI/ML) correlates evidence
+against detected incidents — publishing the result back to the incident service through a
+transactional outbox. **It implements no authentication yet — see the security notice in its
+own README before running it anywhere but locally.**
+
+```bash
+make correlation-build   # compile, format-check, test, package
+make correlation-image   # build the Docker image
+make correlation-up      # start infra + the telemetry-correlation service
+make correlation-logs
+make correlation-down
+make correlation-smoke   # end-to-end ingestion/correlation smoke test
+```
+
+Full details, API reference, event contracts, correlation rules, and known limitations:
+[`services/telemetry-correlation-service/README.md`](services/telemetry-correlation-service/README.md).
+Architecture rationale: [ADR 0010](docs/decisions/0010-incremental-ingestion-and-correlation.md).
+
 ## Project status
 
 **Foundation.** Repository scaffolding, architecture documentation, a
 local data/event-streaming platform (Phase 2), an incident-management
-service (Phase 3), and a local observability baseline (Phase 4) exist.
-No authentication, Kubernetes, AI/investigation functionality,
-frontend, telemetry ingestion/correlation service, or remediation
-execution described above are implemented yet.
+service (Phase 3), a local observability baseline (Phase 4), and a
+telemetry ingestion/correlation service (Phase 5) exist.
+No authentication, Kubernetes, SLO/anomaly detection, AI/investigation
+functionality, frontend, or remediation execution described above are
+implemented yet.
 
 ## Author
 

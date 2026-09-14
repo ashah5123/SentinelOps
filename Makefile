@@ -1,12 +1,14 @@
 .PHONY: help doctor validate infra-config infra-pull infra-up infra-down infra-status infra-logs infra-smoke infra-clean \
 	incident-build incident-test incident-image incident-up incident-down incident-logs \
-	observability-config observability-up observability-down observability-status observability-logs observability-smoke
+	observability-config observability-up observability-down observability-status observability-logs observability-smoke \
+	correlation-build correlation-test correlation-image correlation-up correlation-down correlation-status correlation-logs correlation-smoke
 
 ENV_FILE := .env
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 CORE_SERVICES := postgres redis redpanda minio
 INCIDENT_SERVICE_DIR := services/incident-service
+TELEMETRY_CORRELATION_SERVICE_DIR := services/telemetry-correlation-service
 
 help: ## Show available targets
 	@echo "SentinelOps — available targets:"
@@ -32,6 +34,13 @@ help: ## Show available targets
 	@echo "  make observability-status  Show observability service status/health"
 	@echo "  make observability-logs    Show recent observability stack logs"
 	@echo "  make observability-smoke   Run the observability smoke test"
+	@echo "  make correlation-build     Build and test the telemetry-correlation-service JAR (mvnw verify)"
+	@echo "  make correlation-test      Run only the telemetry-correlation-service test suite"
+	@echo "  make correlation-image     Build the telemetry-correlation-service Docker image"
+	@echo "  make correlation-up        Start infra + the telemetry-correlation service (app profile)"
+	@echo "  make correlation-down      Stop the telemetry-correlation-service container (infra keeps running)"
+	@echo "  make correlation-logs      Tail telemetry-correlation-service logs"
+	@echo "  make correlation-smoke     Run the Phase 5 correlation smoke test"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -182,3 +191,27 @@ observability-logs: observability-config ## Show recent observability stack logs
 
 observability-smoke: ## Run the observability smoke test
 	@bash infrastructure/docker/scripts/observability-smoke-test.sh
+
+## ---- Phase 5: telemetry-correlation-service ----
+
+correlation-build: ## Build and test the telemetry-correlation-service JAR (format check, tests, coverage, package)
+	cd $(TELEMETRY_CORRELATION_SERVICE_DIR) && ./mvnw -q verify
+
+correlation-test: ## Run only the telemetry-correlation-service test suite
+	cd $(TELEMETRY_CORRELATION_SERVICE_DIR) && ./mvnw -q test
+
+correlation-image: infra-config ## Build the telemetry-correlation-service Docker image
+	$(COMPOSE) --profile app build telemetry-correlation-service
+
+correlation-up: infra-up ## Start required infra, then the telemetry-correlation service (app profile)
+	$(COMPOSE) --profile app up -d --wait telemetry-correlation-service
+	@echo "Telemetry correlation service is up on the port configured by TELEMETRY_CORRELATION_SERVICE_PORT."
+
+correlation-down: infra-config ## Stop only the telemetry-correlation-service container; infra keeps running
+	$(COMPOSE) --profile app stop telemetry-correlation-service
+
+correlation-logs: infra-config ## Tail telemetry-correlation-service logs
+	$(COMPOSE) --profile app logs -f telemetry-correlation-service
+
+correlation-smoke: ## Run the Phase 5 correlation smoke test
+	@bash infrastructure/docker/scripts/correlation-smoke-test.sh

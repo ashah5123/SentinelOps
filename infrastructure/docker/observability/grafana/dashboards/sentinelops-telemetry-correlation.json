@@ -1,0 +1,159 @@
+{
+  "title": "SentinelOps Telemetry Correlation",
+  "uid": "sentinelops-telemetry-correlation",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "utc",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["sentinelops", "phase-5"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ingestion rate",
+      "description": "Normalized evidence records ingested per second, by source and evidence type.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_records_ingested_total[5m])) by (source, evidence_type)",
+          "legendFormat": "{{source}}/{{evidence_type}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 2,
+      "title": "Ingestion lag",
+      "description": "How far behind now() each source's ingestion checkpoint watermark is (higher = further behind).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_polling_duration_seconds_sum[5m])) by (source) / sum(rate(sentinelops_telemetry_polling_duration_seconds_count[5m])) by (source)",
+          "legendFormat": "{{source}} avg cycle duration"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 3,
+      "title": "Source failures",
+      "description": "Backend query and polling-cycle failures, by source.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_backend_query_failures_total[5m])) by (source)",
+          "legendFormat": "query failures: {{source}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_polling_failures_total[5m])) by (source)",
+          "legendFormat": "polling failures: {{source}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Duplicate percentage",
+      "description": "Share of processed records rejected as duplicates, by source.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_records_duplicate_total[5m])) by (source) / (sum(rate(sentinelops_telemetry_records_duplicate_total[5m])) by (source) + sum(rate(sentinelops_telemetry_records_ingested_total[5m])) by (source))",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }
+    },
+    {
+      "id": 5,
+      "title": "Backend availability (circuit-breaker state)",
+      "description": "1 = open (failing, calls short-circuited), 0 = closed (healthy), by backend.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "resilience4j_circuitbreaker_state{state=\"open\"}",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "max": 1, "min": 0 } }
+    },
+    {
+      "id": 6,
+      "title": "Correlation processing",
+      "description": "Correlation runs by outcome, and evaluation duration (p95).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_incidents_correlated_total[5m])) by (outcome)",
+          "legendFormat": "{{outcome}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(sentinelops_telemetry_correlation_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 duration (s)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Evidence selected per correlation run",
+      "description": "Evidence records selected by correlation runs, by evidence type.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_correlation_evidence_selected_total[5m])) by (evidence_type)",
+          "legendFormat": "{{evidence_type}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Outbox publish failures",
+      "description": "incident.evidence.correlated.v1 publish outcomes.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_outbox_published_total{outcome=\"failure\"}[5m])) by (topic)",
+          "legendFormat": "failed: {{topic}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_outbox_published_total{outcome=\"success\"}[5m])) by (topic)",
+          "legendFormat": "published: {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Deployment and dependency events processed",
+      "description": "Rate of deployment.changed.v1 and service.dependency.changed.v1 events processed.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_telemetry_deployment_events_processed_total[5m])) by (outcome)",
+          "legendFormat": "deployment: {{outcome}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_dependency_events_processed_total[5m])) by (operation, outcome)",
+          "legendFormat": "dependency: {{operation}}/{{outcome}}"
+        }
+      ]
+    }
+  ]
+}

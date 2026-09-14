@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelops.dev/schemas/event-envelope.schema.json",
+  "title": "SentinelOps Event Envelope",
+  "description": "The envelope every SentinelOps service uses to publish and consume events over Redpanda's Kafka-compatible API. See docs/events/event-envelope.md.",
+  "type": "object",
+  "required": ["eventId", "eventType", "schemaVersion", "occurredAt", "correlationId", "producer", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Globally unique identifier for this event instance; the idempotency key."
+    },
+    "eventType": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 150,
+      "description": "The dot-versioned event type, matching the Kafka topic name."
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The payload schema version, incremented only on breaking payload changes."
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC instant the underlying fact occurred, not when it was published."
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Propagated across the request/event chain that produced this event."
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Logical name of the service that produced this event."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-type-specific body; validated separately against its own schema."
+    }
+  }
+}

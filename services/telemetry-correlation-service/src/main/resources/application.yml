@@ -1,0 +1,201 @@
+# SentinelOps telemetry-correlation-service configuration.
+#
+# Defaults assume the service is run directly on the host (e.g. `./mvnw spring-boot:run`)
+# against the Phase 2 infrastructure's host-published ports and the Phase 4 observability
+# stack. See application-docker.yml for the profile used when this service runs inside the
+# Compose network.
+server:
+  port: ${SERVER_PORT:8082}
+  shutdown: graceful
+
+spring:
+  application:
+    name: telemetry-correlation-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:sentinelops}
+    username: ${POSTGRES_APP_USER:sentinelops_app}
+    password: ${POSTGRES_APP_PASSWORD:change-me-local-dev-only}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 5000
+      validation-timeout: 3000
+      pool-name: telemetry-correlation-service-pool
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+  flyway:
+    enabled: true
+    schemas: telemetry
+    default-schema: telemetry
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    consumer:
+      group-id: telemetry-correlation-service
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
+
+sentinelops:
+  telemetry:
+    producer-name: telemetry-correlation-service
+    monitored-services: ${TELEMETRY_MONITORED_SERVICES:incident-service}
+    prometheus:
+      base-url: ${PROMETHEUS_URL:http://localhost:9090}
+      connect-timeout: 2s
+      read-timeout: 5s
+      max-retries: 3
+      retry-backoff: 500ms
+      max-response-bytes: 2097152
+    loki:
+      base-url: ${LOKI_URL:http://localhost:3100}
+      connect-timeout: 2s
+      read-timeout: 5s
+      max-retries: 3
+      retry-backoff: 500ms
+      max-response-bytes: 2097152
+    tempo:
+      base-url: ${TEMPO_URL:http://localhost:3200}
+      connect-timeout: 2s
+      read-timeout: 5s
+      max-retries: 3
+      retry-backoff: 500ms
+      max-response-bytes: 2097152
+    # Configurable PromQL per collected metric family. "%s" is substituted with the
+    # monitored service's Prometheus "job" label value.
+    prometheus-queries:
+      request_rate: "sum(rate(http_server_requests_seconds_count{job=\"%s\"}[1m]))"
+      error_rate: "sum(rate(http_server_requests_seconds_count{job=\"%s\",outcome=\"SERVER_ERROR\"}[1m]))"
+      latency_p95: "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"%s\"}[5m])) by (le))"
+      availability: "up{job=\"%s\"}"
+      jvm_heap_used: "jvm_memory_used_bytes{job=\"%s\",area=\"heap\"}"
+      kafka_consumer_errors: "increase(spring_kafka_listener_seconds_count{job=\"%s\",exception!=\"none\"}[5m])"
+    # LogQL template; "%s" is substituted with the monitored service's "service" Loki label.
+    loki-query: "{service=\"%s\"}"
+    tempo-service-tag: "service.name"
+    ingestion:
+      polling-interval: ${TELEMETRY_POLLING_INTERVAL:30s}
+      query-window: ${TELEMETRY_QUERY_WINDOW:60s}
+      overlap-window: ${TELEMETRY_OVERLAP_WINDOW:15s}
+      max-records-per-cycle: ${TELEMETRY_MAX_RECORDS_PER_CYCLE:2000}
+      batch-size: ${TELEMETRY_BATCH_SIZE:200}
+    correlation:
+      window: ${CORRELATION_WINDOW:15m}
+      max-dependency-depth: ${CORRELATION_MAX_DEPENDENCY_DEPTH:1}
+      max-evidence-results: ${CORRELATION_MAX_EVIDENCE_RESULTS:25}
+      weights:
+        affected-service-match: 40
+        time-proximity: 20
+        trace-id-match: 30
+        correlation-id-match: 25
+        recent-deployment: 20
+        dependency-connection: 15
+        error-or-failed-status: 15
+        elevated-metric: 10
+    outbox:
+      polling-interval: ${OUTBOX_POLLING_INTERVAL:2s}
+      batch-size: ${OUTBOX_BATCH_SIZE:50}
+      max-attempts: ${OUTBOX_MAX_ATTEMPTS:8}
+      initial-backoff: ${OUTBOX_INITIAL_BACKOFF:1s}
+      max-backoff: ${OUTBOX_MAX_BACKOFF:60s}
+      retention-after-publish: ${OUTBOX_RETENTION_AFTER_PUBLISH:24h}
+    consumer:
+      max-retries: ${TELEMETRY_CONSUMER_MAX_RETRIES:5}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    readinessstate:
+      enabled: true
+    livenessstate:
+      enabled: true
+  metrics:
+    tags:
+      service: ${spring.application.name}
+      environment: ${ENVIRONMENT:local}
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}/v1/traces
+    logging:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}/v1/logs
+      transport: grpc
+  opentelemetry:
+    resource-attributes:
+      deployment.environment: ${ENVIRONMENT:local}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      prometheus:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      loki:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      tempo:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+  retry:
+    instances:
+      prometheus:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+      loki:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+      tempo:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+
+logging:
+  structured:
+    format:
+      console: ecs
+  level:
+    com.sentinelops: ${LOG_LEVEL:INFO}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs

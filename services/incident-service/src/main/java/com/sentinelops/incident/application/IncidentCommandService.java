@@ -166,6 +166,48 @@ public class IncidentCommandService {
       String description,
       String sourceReference,
       String correlationId) {
+    return recordEvidence(
+        incidentId,
+        evidenceType,
+        description,
+        sourceReference,
+        correlationId,
+        ActorType.LOCAL_USER,
+        "local-operator");
+  }
+
+  /**
+   * Adds evidence surfaced by the telemetry-correlation service's deterministic correlation engine
+   * (see {@code docs/events/telemetry-correlation-events.md}). Never overwrites evidence an
+   * operator already recorded — like every other evidence addition, this only ever appends a new
+   * row. A correlation score reflects proximity/connection to the incident, not a confirmed root
+   * cause, and must never be described as one in {@code description}.
+   */
+  @Transactional
+  public IncidentEvidence addEvidenceFromCorrelation(
+      UUID incidentId,
+      String evidenceType,
+      String description,
+      String sourceReference,
+      String correlationId) {
+    return recordEvidence(
+        incidentId,
+        evidenceType,
+        description,
+        sourceReference,
+        correlationId,
+        ActorType.EVENT_CONSUMER,
+        "telemetry-correlation-service");
+  }
+
+  private IncidentEvidence recordEvidence(
+      UUID incidentId,
+      String evidenceType,
+      String description,
+      String sourceReference,
+      String correlationId,
+      ActorType actorType,
+      String actorId) {
     Incident incident = getIncidentOrThrow(incidentId);
 
     IncidentEvidence evidence =
@@ -176,8 +218,8 @@ public class IncidentCommandService {
     auditRecorder.record(
         incidentId,
         "EVIDENCE_RECORDED",
-        ActorType.LOCAL_USER,
-        "local-operator",
+        actorType,
+        actorId,
         correlationId,
         Map.of("evidenceType", evidenceType));
 

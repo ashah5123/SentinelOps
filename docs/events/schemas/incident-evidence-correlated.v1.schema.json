@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelops.dev/schemas/incident-evidence-correlated.v1.schema.json",
+  "title": "incident.evidence.correlated.v1 payload",
+  "type": "object",
+  "required": [
+    "incidentId",
+    "evidenceId",
+    "evidenceType",
+    "summary",
+    "sourceService",
+    "observedAt",
+    "sourceReference",
+    "correlationScore",
+    "scoreExplanation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "incidentId": { "type": "string", "format": "uuid" },
+    "evidenceId": { "type": "string", "format": "uuid" },
+    "evidenceType": { "type": "string", "enum": ["METRIC", "LOG", "TRACE", "DEPLOYMENT", "DEPENDENCY"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "sourceService": { "type": "string", "minLength": 1, "maxLength": 150 },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "sourceReference": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "correlationScore": { "type": "number", "minimum": 0 },
+    "scoreExplanation": { "type": "string", "maxLength": 1000 },
+    "traceId": { "type": ["string", "null"], "maxLength": 64 },
+    "deploymentId": { "type": ["string", "null"], "format": "uuid" }
+  }
+}

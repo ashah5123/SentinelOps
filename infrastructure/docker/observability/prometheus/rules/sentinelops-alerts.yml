@@ -88,3 +88,68 @@ groups:
           description: >-
             At least one telemetry.anomaly.v1 event failed processing (raised an
             exception) in the last 5 minutes, distinct from duplicate-event no-ops.
+
+  - name: sentinelops-telemetry-correlation
+    rules:
+      - alert: SentinelOpsTelemetryCorrelationServiceDown
+        expr: up{job="telemetry-correlation-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: telemetry-correlation-service
+        annotations:
+          summary: "telemetry-correlation-service is unreachable"
+          description: >-
+            Prometheus has been unable to scrape telemetry-correlation-service for at
+            least 1 minute. Check `make correlation-logs` and container health.
+
+      - alert: SentinelOpsIngestionPollingFailures
+        expr: increase(sentinelops_telemetry_polling_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "Telemetry ingestion polling failures"
+          description: >-
+            At least one polling cycle failed before persistence completed in the last
+            5 minutes. Check `make correlation-logs` for the failing source (Prometheus,
+            Loki, or Tempo) — a single source failing does not block the others.
+
+      - alert: SentinelOpsCorrelationFailures
+        expr: increase(sentinelops_telemetry_incidents_correlated_total{outcome="failed"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "Correlation-run failures"
+          description: >-
+            At least one incident.detected.v1 event failed correlation processing in
+            the last 5 minutes, distinct from duplicate-event no-ops.
+
+      - alert: SentinelOpsTelemetryOutboxPublishFailures
+        expr: increase(sentinelops_telemetry_outbox_published_total{outcome="failure"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "Telemetry-correlation outbox publish failures"
+          description: >-
+            At least one incident.evidence.correlated.v1 event failed to publish to
+            Kafka in the last 5 minutes.
+
+      - alert: SentinelOpsBackendCircuitBreakerOpen
+        expr: resilience4j_circuitbreaker_state{state="open"} == 1
+        for: 0m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "A telemetry backend circuit breaker is open"
+          description: >-
+            The circuit breaker for {{ $labels.name }} (prometheus, loki, or tempo) is
+            open, meaning that backend has been failing and calls to it are
+            temporarily short-circuited. Other backends continue to be ingested
+            normally.

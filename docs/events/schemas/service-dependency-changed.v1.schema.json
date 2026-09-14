@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelops.dev/schemas/service-dependency-changed.v1.schema.json",
+  "title": "service.dependency.changed.v1 payload",
+  "type": "object",
+  "required": ["sourceService", "targetService", "dependencyType", "environment", "operation", "effectiveAt"],
+  "additionalProperties": false,
+  "properties": {
+    "sourceService": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,148}[a-z0-9])?$",
+      "maxLength": 150
+    },
+    "targetService": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,148}[a-z0-9])?$",
+      "maxLength": 150
+    },
+    "dependencyType": { "type": "string", "minLength": 1, "maxLength": 50 },
+    "environment": { "type": "string", "minLength": 1, "maxLength": 50 },
+    "operation": { "type": "string", "enum": ["ADDED", "UPDATED", "REMOVED"] },
+    "effectiveAt": { "type": "string", "format": "date-time" }
+  }
+}

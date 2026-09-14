@@ -1,8 +1,9 @@
 name: sentinelops
 
 # SentinelOps local platform: Phase 2 data/event-streaming infrastructure, the Phase 3
-# incident-service application (behind the "app" Compose profile), and the Phase 4
-# observability stack (behind the "observability" Compose profile).
+# incident-service application, the Phase 5 telemetry-correlation-service (both behind the
+# "app" Compose profile), and the Phase 4 observability stack (behind the "observability"
+# Compose profile).
 #
 # Runs entirely on local resources with no paid APIs or cloud dependencies.
 # All host port bindings are restricted to 127.0.0.1. See docs/development/
@@ -233,6 +234,67 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     ports:
       - "127.0.0.1:${INCIDENT_SERVICE_PORT:-8081}:8081"
+    networks: [sentinelops-net]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  postgres-schema-init:
+    image: pgvector/pgvector:pg16
+    container_name: sentinelops-postgres-schema-init
+    profiles: ["app"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+    volumes:
+      - ./postgres/provisioning/telemetry-schema-init.sh:/scripts/telemetry-schema-init.sh:ro
+    entrypoint: ["/bin/bash", "/scripts/telemetry-schema-init.sh"]
+    networks: [sentinelops-net]
+    restart: "no"
+
+  telemetry-correlation-service:
+    build:
+      context: ../../services/telemetry-correlation-service
+      dockerfile: Dockerfile
+    image: sentinelops/telemetry-correlation-service:local
+    container_name: sentinelops-telemetry-correlation-service
+    profiles: ["app"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-schema-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+      redpanda-topics-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      SERVER_PORT: 8082
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
+      TEMPO_URL: http://tempo:3200
+      TELEMETRY_MONITORED_SERVICES: ${TELEMETRY_MONITORED_SERVICES:-incident-service}
+    ports:
+      - "127.0.0.1:${TELEMETRY_CORRELATION_SERVICE_PORT:-8082}:8082"
     networks: [sentinelops-net]
     restart: unless-stopped
     deploy:

@@ -31,6 +31,23 @@ Dead-letter topic: `telemetry.anomaly.v1.dlq` — an anomaly event that cannot b
 the configured number of retries (see `sentinelops.incident-service.consumer.max-retries`) is
 published here instead of being retried forever.
 
+### `incident.evidence.correlated.v1`
+
+Published by the telemetry-correlation service (Phase 5) for every piece of evidence a
+correlation run selects for a detected incident — see
+[docs/events/telemetry-correlation-events.md](telemetry-correlation-events.md) for the full
+payload contract. Consumed idempotently (keyed by the envelope's `eventId`, tracked in this
+service's own `processed_events` table) to append evidence to the named incident via
+`IncidentCommandService.addEvidenceFromCorrelation`, attributed to actor type `EVENT_CONSUMER`
+and actor ID `telemetry-correlation-service` (as opposed to operator-recorded evidence, which is
+attributed to `LOCAL_USER`/`local-operator`). Duplicate delivery never creates duplicate
+evidence; a `correlationScore` reflects rule-based proximity/connection to the incident, never a
+confirmed root cause, and this evidence never overwrites anything an operator already recorded.
+
+If the named incident does not exist, evidence recording fails and the event is retried with
+bounded exponential backoff, then routed to `incident.evidence.correlated.v1.dlq` — see
+`EvidenceCorrelatedListener`.
+
 ## Published
 
 Both published events are written through the transactional outbox

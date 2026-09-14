@@ -88,6 +88,9 @@ public class KafkaConfig {
                   case EventTypes.TELEMETRY_ANOMALY_V1 ->
                       new org.apache.kafka.common.TopicPartition(
                           EventTypes.TELEMETRY_ANOMALY_V1_DLQ, -1);
+                  case EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1 ->
+                      new org.apache.kafka.common.TopicPartition(
+                          EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1_DLQ, -1);
                   default ->
                       new org.apache.kafka.common.TopicPartition(record.topic() + ".dlq", -1);
                 });

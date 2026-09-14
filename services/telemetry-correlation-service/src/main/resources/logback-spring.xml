@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Extends Spring Boot's default logging with an OpenTelemetryAppender so every log event is
+  also exported as an OTLP log record (see management.otlp.logging.* in application.yml) —
+  in addition to, not instead of, the structured JSON console output (logging.structured.format.console:
+  ecs). Mirrors the incident service's own logback-spring.xml.
+-->
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+      <format>ecs</format>
+    </encoder>
+  </appender>
+
+  <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+    <captureExperimentalAttributes>false</captureExperimentalAttributes>
+    <captureCodeAttributes>true</captureCodeAttributes>
+    <captureMdcAttributes>correlationId</captureMdcAttributes>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE" />
+    <appender-ref ref="OTEL" />
+  </root>
+
+  <logger name="com.sentinelops" level="${LOG_LEVEL:-INFO}" />
+</configuration>

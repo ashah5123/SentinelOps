@@ -34,3 +34,10 @@ scrape_configs:
       - targets: ["incident-service:8081"]
         labels:
           service: incident-service
+
+  - job_name: telemetry-correlation-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["telemetry-correlation-service:8082"]
+        labels:
+          service: telemetry-correlation-service
