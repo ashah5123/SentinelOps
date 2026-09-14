@@ -147,6 +147,24 @@ Resilience4j additionally auto-registers `resilience4j_circuitbreaker_state` (an
 call/duration metrics) tagged by circuit-breaker `name` (`prometheus`, `loki`, `tempo`) —
 useful for the "backend availability" dashboard panel below.
 
+**Reliability metrics (Phase 6)**, present in both services with an analogous
+`sentinelops.telemetry.*` name for telemetry-correlation-service:
+
+| Metric | Type | Tags | Meaning |
+|---|---|---|---|
+| `sentinelops.outbox.backlog` | gauge | — | Outbox rows currently `PENDING`. |
+| `sentinelops.outbox.oldest_pending_age_seconds` | gauge | — | Age of the oldest `PENDING` row; also a recovery-time proxy after an outage. |
+| `sentinelops.outbox.dead_lettered` | counter | `topic` | Outbox rows that exhausted retries and moved to `FAILED`. |
+| `sentinelops.consumer.dead_lettered` | counter | `topic` | Consumed records routed to a dead-letter topic. |
+| `sentinelops.consumer.retry.attempts` | counter | `topic` | Retry attempts made by an inbound Kafka consumer. |
+| `sentinelops.evidence_correlated.events.processed` | counter | `outcome` | Incident-service-only: outcomes of consuming `incident.evidence.correlated.v1`. |
+
+Consumer processing latency is available without any new metric via Spring Kafka's existing
+listener observation: `spring_kafka_listener_seconds_{count,sum,bucket}`.
+
+See `docs/development/reliability.md` for the full reliability guarantees, retry/dead-letter
+behavior, the local fault-testing workflow, and an operational runbook built on these metrics.
+
 ## Finding a request across Grafana, Tempo, and Loki
 
 Every incident-service HTTP response carries an `X-Correlation-ID`
@@ -226,7 +244,11 @@ make observability-smoke
   `infrastructure/docker/observability/prometheus/rules/sentinelops-alerts.yml`):
   `SentinelOpsIncidentServiceDown`, `SentinelOpsHighHttp5xxRate`,
   `SentinelOpsHighRequestLatency`, `SentinelOpsKafkaConsumerErrors`,
-  `SentinelOpsOutboxPublishFailures`, `SentinelOpsAnomalyProcessingFailures`.
+  `SentinelOpsOutboxPublishFailures`, `SentinelOpsAnomalyProcessingFailures`,
+  plus the telemetry-correlation-service and Phase 6 `sentinelops-reliability`
+  alert groups (`...OutboxBacklogGrowing`, `...OutboxOldestPendingTooOld`,
+  `...ConsumerDeadLetterAccumulation` for each service) — see
+  `docs/development/reliability.md` for what each one means operationally.
 
 **All thresholds are local-development defaults**, chosen for a
 single-instance, low-traffic environment (e.g. 5% 5xx rate, 1s p95
@@ -300,21 +322,26 @@ stop profiles you're not actively using.
   (including Phase 5 panels for ingestion rate/lag, source failures,
   duplicate percentage, correlation processing, and outbox failures);
   Prometheus alerting rules for both services; idempotent smoke tests
-  for both phases; unit tests for the new metrics/tracing helpers.
+  for both phases; unit tests for the new metrics/tracing helpers; the
+  Phase 6 "SentinelOps Reliability" dashboard and `sentinelops-reliability`
+  alert group (outbox backlog/age, dead-lettered events, retry attempts) —
+  see `docs/development/reliability.md`.
 - **Blocked in the environment this phase was authored in**: Docker
   was not installed, so no container was actually built, started, or
   scraped, and the end-to-end runtime acceptance criteria in the
-  Phase 4/5 validation checklists (containers healthy, Prometheus
+  Phase 4/5/6 validation checklists (containers healthy, Prometheus
   targets up, a real trace/log visible, Grafana dashboards rendering
   live data, alert rules loaded, restart-and-persist check) have
   **not** been executed or confirmed. `make observability-config`
   (static Compose validation), all YAML/JSON config parsing, the
   Maven build, and the full non-Docker unit test suite have been run
   and pass. This must be completed and confirmed, exactly like the
-  outstanding Phase 2, Phase 3, and Phase 5 runtime-verification
-  items, before Phase 4 (and Phase 5) is considered fully done.
+  outstanding Phase 2, Phase 3, Phase 5, and Phase 6 (reliability
+  hardening) runtime-verification items, before Phase 4 (and Phase 5)
+  is considered fully done.
 - **Not in scope for Phase 4 or Phase 5** (deferred to later phases
-  per the roadmap): SLO evaluation/anomaly detection (Phase 6), any
-  AI-driven analysis of this telemetry (Phase 7), authentication in
+  per the roadmap): SLO evaluation/anomaly detection (roadmap Phase 6,
+  "Detection engine" — distinct from this Phase 6 reliability-hardening
+  work), any AI-driven analysis of this telemetry (Phase 7), authentication in
   front of any of these UIs, and
   Kubernetes packaging (Phase 10). None of that is implemented here.

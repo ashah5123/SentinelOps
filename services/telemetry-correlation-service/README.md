@@ -155,11 +155,16 @@ configuration fails service startup rather than silently falling back to an unsa
 ## Retry and dead-letter handling
 
 Inbound Kafka consumption (`deployment.changed.v1`, `service.dependency.changed.v1`,
-`incident.detected.v1`) uses bounded exponential backoff then dead-letter publication, identical
-to the incident service's convention (see ADR 0008). Outbound publication
+`incident.detected.v1`) uses jittered, bounded exponential backoff then dead-letter publication
+(malformed JSON and invalid-validation payloads skip retries entirely and are dead-lettered
+immediately), identical to the incident service's convention (see ADR 0008 and
+[ADR 0011](../../docs/decisions/0011-reliability-and-failure-recovery.md)). Outbound publication
 (`incident.evidence.correlated.v1`) uses the same transactional-outbox pattern as the incident
-service (ADR 0007) — failed publish attempts are retried with backoff; rows that exhaust
-`sentinelops.telemetry.outbox.max-attempts` are marked `FAILED` and kept for manual inspection:
+service (ADR 0007), with claim/publish/finalize as three separate operations so no database
+transaction is held open across the Kafka network call — failed publish attempts are retried with
+jittered backoff; rows that exhaust `sentinelops.telemetry.outbox.max-attempts` are marked
+`FAILED` and kept for manual inspection. Full guarantees, the local fault-testing workflow, and
+an operational runbook: [`docs/development/reliability.md`](../../docs/development/reliability.md).
 
 ```sql
 SELECT id, topic, event_type, attempt_count, last_error, created_at

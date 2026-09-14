@@ -153,3 +153,80 @@ groups:
             open, meaning that backend has been failing and calls to it are
             temporarily short-circuited. Other backends continue to be ingested
             normally.
+
+  # Phase 6: reliability/failure-recovery signals shared by both services' outbox and
+  # consumer implementations. Thresholds are local-development defaults — see
+  # docs/development/reliability.md for the operational runbook these alerts feed into.
+  - name: sentinelops-reliability
+    rules:
+      - alert: SentinelOpsOutboxBacklogGrowing
+        expr: sentinelops_outbox_backlog > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "incident-service outbox backlog is growing"
+          description: >-
+            More than 100 outbox rows have been PENDING for at least 5 minutes. Usually
+            means the broker is unreachable or persistently rejecting sends — see the
+            "growing outbox backlog" runbook entry in docs/development/reliability.md.
+
+      - alert: SentinelOpsOutboxOldestPendingTooOld
+        expr: sentinelops_outbox_oldest_pending_age_seconds > 300
+        for: 1m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "incident-service has an outbox row pending for over 5 minutes"
+          description: >-
+            The oldest still-PENDING outbox row is more than 5 minutes old. Also useful
+            as a recovery-time signal: watch this value fall back toward zero after a
+            broker outage ends.
+
+      - alert: SentinelOpsConsumerDeadLetterAccumulation
+        expr: increase(sentinelops_consumer_dead_lettered_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "incident-service is routing records to a dead-letter topic"
+          description: >-
+            At least one consumed record was dead-lettered in the last 15 minutes — see
+            the "dead-letter accumulation" runbook entry in docs/development/reliability.md
+            for the inspection and replay procedure.
+
+      - alert: SentinelOpsTelemetryOutboxBacklogGrowing
+        expr: sentinelops_telemetry_outbox_backlog > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "telemetry-correlation-service outbox backlog is growing"
+          description: >-
+            More than 100 outbox rows have been PENDING for at least 5 minutes.
+
+      - alert: SentinelOpsTelemetryOutboxOldestPendingTooOld
+        expr: sentinelops_telemetry_outbox_oldest_pending_age_seconds > 300
+        for: 1m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "telemetry-correlation-service has an outbox row pending for over 5 minutes"
+          description: >-
+            The oldest still-PENDING outbox row is more than 5 minutes old.
+
+      - alert: SentinelOpsTelemetryConsumerDeadLetterAccumulation
+        expr: increase(sentinelops_telemetry_consumer_dead_lettered_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: telemetry-correlation-service
+        annotations:
+          summary: "telemetry-correlation-service is routing records to a dead-letter topic"
+          description: >-
+            At least one consumed record was dead-lettered in the last 15 minutes.

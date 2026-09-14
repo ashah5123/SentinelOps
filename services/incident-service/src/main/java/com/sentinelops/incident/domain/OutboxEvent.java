@@ -121,6 +121,21 @@ public class OutboxEvent {
     this.publishedAt = Instant.now();
   }
 
+  /**
+   * Marks this PENDING row as claimed for publication without changing its attempt count or status,
+   * by moving {@code nextAttemptAt} forward to {@code leaseUntil}. This is a short, committed
+   * transaction's substitute for holding the {@code SELECT ... FOR UPDATE SKIP LOCKED} row lock
+   * (and the surrounding database transaction) open for the duration of the network call to the
+   * broker: once the claiming transaction commits, the row lock is released, but no other publisher
+   * instance will re-claim the row until the lease expires. If this process crashes before
+   * publishing completes, the row simply becomes claimable again once the lease expires and is
+   * republished — the same at-least-once, safe-to-reprocess guarantee this outbox has always
+   * documented (see {@code OutboxPublisher}).
+   */
+  public void lease(Instant leaseUntil) {
+    this.nextAttemptAt = leaseUntil;
+  }
+
   public void recordFailedAttempt(String error, Instant nextAttemptAt, int maxAttempts) {
     this.attemptCount++;
     this.lastError = error;

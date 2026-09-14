@@ -4,6 +4,7 @@ import com.sentinelops.telemetry.domain.OutboxEvent;
 import com.sentinelops.telemetry.domain.OutboxStatus;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -29,4 +30,11 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
 
   @Transactional
   long deleteByStatusAndPublishedAtBefore(OutboxStatus status, Instant publishedBefore);
+
+  /** Backlog size for the {@code sentinelops.telemetry.outbox.backlog} gauge. */
+  long countByStatus(OutboxStatus status);
+
+  /** Oldest still-unpublished row's creation time, for the "oldest unpublished event age" gauge. */
+  @Query("SELECT MIN(o.createdAt) FROM OutboxEvent o WHERE o.status = :status")
+  Optional<Instant> findOldestCreatedAtByStatus(@Param("status") OutboxStatus status);
 }

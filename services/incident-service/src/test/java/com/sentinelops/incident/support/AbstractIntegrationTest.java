@@ -40,7 +40,7 @@ public abstract class AbstractIntegrationTest {
       Paths.get("../../infrastructure/docker/postgres/init").toAbsolutePath().normalize();
 
   @Container
-  static final PostgreSQLContainer<?> POSTGRES =
+  protected static final PostgreSQLContainer<?> POSTGRES =
       new PostgreSQLContainer<>(POSTGRES_IMAGE)
           .withDatabaseName("sentinelops_test")
           .withUsername("sentinelops_test")
@@ -80,8 +80,10 @@ public abstract class AbstractIntegrationTest {
               new NewTopic(EventTypes.TELEMETRY_ANOMALY_V1, 1, (short) 1),
               new NewTopic(EventTypes.INCIDENT_DETECTED_V1, 1, (short) 1),
               new NewTopic(EventTypes.AUDIT_EVENT_V1, 1, (short) 1),
+              new NewTopic(EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1, 1, (short) 1),
               new NewTopic(EventTypes.TELEMETRY_ANOMALY_V1_DLQ, 1, (short) 1),
-              new NewTopic(EventTypes.INCIDENT_DETECTED_V1_DLQ, 1, (short) 1));
+              new NewTopic(EventTypes.INCIDENT_DETECTED_V1_DLQ, 1, (short) 1),
+              new NewTopic(EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1_DLQ, 1, (short) 1));
       adminClient.createTopics(topics).all().get();
     }
   }

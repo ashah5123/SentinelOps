@@ -1,8 +1,10 @@
 package com.sentinelops.incident.observability;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 
 /**
@@ -70,5 +72,58 @@ public class IncidentMetrics {
             .description("Time to publish one outbox event to Kafka")
             .tag("topic", topic)
             .register(meterRegistry));
+  }
+
+  /** An outbox row exhausted its retry attempts and moved to the FAILED (dead-letter) state. */
+  public void outboxDeadLettered(String topic) {
+    Counter.builder("sentinelops.outbox.dead_lettered")
+        .description("Outbox events that exhausted their retry attempts and moved to FAILED")
+        .tag("topic", topic)
+        .register(meterRegistry)
+        .increment();
+  }
+
+  /** A consumed record was routed to its dead-letter topic (retries exhausted or non-retryable). */
+  public void consumerDeadLettered(String topic) {
+    Counter.builder("sentinelops.consumer.dead_lettered")
+        .description("Consumed records routed to a dead-letter topic, by source topic")
+        .tag("topic", topic)
+        .register(meterRegistry)
+        .increment();
+  }
+
+  /** One retry attempt was made for a record that initially failed processing. */
+  public void consumerRetryAttempted(String topic) {
+    Counter.builder("sentinelops.consumer.retry.attempts")
+        .description("Consumer retry attempts, by source topic")
+        .tag("topic", topic)
+        .register(meterRegistry)
+        .increment();
+  }
+
+  /** {@code outcome} is one of {@code processed}, {@code duplicate}, or {@code failed}. */
+  public void evidenceCorrelatedProcessed(String outcome) {
+    Counter.builder("sentinelops.evidence_correlated.events.processed")
+        .description("incident.evidence.correlated.v1 events processed, by outcome")
+        .tag("outcome", outcome)
+        .register(meterRegistry)
+        .increment();
+  }
+
+  /**
+   * Registers the outbox-backlog gauges once, backed by the given repository lookups. Called once
+   * at startup by {@code OutboxBacklogMetrics} rather than on every publish, since a gauge is a
+   * live callback rather than a point-in-time value.
+   */
+  public void bindOutboxBacklogGauges(
+      Supplier<Number> pendingCount, Supplier<Number> oldestPendingAgeSeconds) {
+    Gauge.builder("sentinelops.outbox.backlog", pendingCount)
+        .description("Number of outbox rows currently PENDING publication")
+        .register(meterRegistry);
+    Gauge.builder("sentinelops.outbox.oldest_pending_age_seconds", oldestPendingAgeSeconds)
+        .description(
+            "Age in seconds of the oldest still-PENDING outbox row (0 when the backlog is empty);"
+                + " also usable as a recovery-time proxy after a dependency outage ends")
+        .register(meterRegistry);
   }
 }

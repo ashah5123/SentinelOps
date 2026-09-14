@@ -138,7 +138,7 @@ existing structured logs/correlation IDs into real traces and metrics.
   see `docs/development/observability.md`'s implementation-status
   section for the exact list.
 
-## Phase 5 — Telemetry ingestion and correlation service (current)
+## Phase 5 — Telemetry ingestion and correlation service
 
 **Goal:** Build the Ingestion & Correlation Service (Java) that
 normalizes telemetry, deployment events, and dependency metadata into
@@ -198,6 +198,57 @@ a shared incident-evidence model, feeding the incident service.
   must be completed and confirmed before Phase 5 is considered fully
   done — see `services/telemetry-correlation-service/README.md`'s
   known-limitations section for the exact list.
+
+## Phase 6 (reliability hardening) — Production reliability and failure recovery (current)
+
+**Note on numbering:** this is a cross-cutting reliability-hardening pass applied to the
+already-completed incident service (Phase 3) and telemetry-correlation service (Phase 5) — it
+does not build new user-facing capability and is tracked separately from the sequentially
+numbered roadmap phase below also named "Phase 6" ("Detection engine"), which remains unstarted
+future work. Every other reference to "Phase 6" in this repository's documentation means *this*
+reliability-hardening work unless it explicitly says "Detection engine."
+
+**Goal:** Harden both existing Java services so incident/telemetry events are processed reliably
+across duplicate delivery, temporary dependency failures, application restarts, and
+message-broker interruptions — see
+[ADR 0011](decisions/0011-reliability-and-failure-recovery.md) and
+`docs/development/reliability.md`.
+
+**Acceptance criteria:**
+- [x] The transactional outbox no longer holds a database transaction open across the Kafka
+  network send: claiming, sending, and finalizing are three separate short operations, with a
+  time-based lease (not a held row lock) protecting a claimed row from re-claiming (ADR 0011).
+- [x] Outbox and inbound-consumer retry backoff both use jittered exponential backoff
+  (`JitteredExponentialBackOff`), configurable per service.
+- [x] Non-retryable exceptions (malformed JSON, invalid enum/validation values) are routed
+  straight to the dead-letter topic without consuming retry attempts.
+- [x] `/actuator/health/readiness` on both services fails when PostgreSQL or the Kafka-compatible
+  broker is unreachable (previously it reflected only the application's own readiness state).
+- [x] A configurable retention/cleanup job exists for `processed_events` idempotency records on
+  both services.
+- [x] New metrics: outbox backlog size, oldest-unpublished-event age, outbox dead-lettered
+  events, consumer dead-lettered events, consumer retry attempts — plus a fixed gap closed
+  (`incident.evidence.correlated.v1` consumption now also records a duplicate/processed metric).
+  New Grafana dashboard ("SentinelOps Reliability") and Prometheus alert group
+  (`sentinelops-reliability`) built on them.
+- [x] Ten new Testcontainers-based integration tests covering: transactional
+  commit-together/rollback-together, a pending event publishing successfully, a temporary
+  consumer failure being retried, a pre-existing pending row surviving a simulated restart, a
+  broker outage leaving events recoverable and resuming automatically once it ends, and
+  readiness correctly failing/recovering around a PostgreSQL outage — added without modifying
+  any existing test's assertions.
+- [x] A local, free, reproducible fault-testing workflow
+  (`infrastructure/docker/scripts/reliability-fault-test.sh`, `make reliability-test`) covering
+  duplicate delivery, broker interruption/recovery, app restart, invalid events, and retry
+  exhaustion.
+- [ ] End-to-end runtime verification (the ten new integration tests actually executing against
+  real PostgreSQL/Kafka-compatible containers; running `make reliability-test` against a live
+  platform and recording real observations) — **blocked**: Docker was not installed in the
+  environment this phase was authored in. Static validation (compile, spotless, the full
+  non-Docker unit test suite for both services, `mvn verify` package builds, and YAML/JSON config
+  parsing) was completed and passes — see `docs/benchmarks/phase-6-reliability.md` for the exact
+  results and what remains unverified. This must be completed and confirmed before this Phase 6
+  (reliability hardening) is considered fully done.
 
 ## Phase 6 — Detection engine
 

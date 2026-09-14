@@ -19,8 +19,17 @@ sentinelops:
       initial-backoff: 200ms
       max-backoff: 2s
       retention-after-publish: 24h
+      lease-duration: 2s
+      publish-timeout: 3s
+      backoff-jitter: 0.2
     consumer:
       max-retries: 3
+      retry-initial-interval: 200ms
+      retry-max-interval: 2s
+      retry-multiplier: 2.0
+      retry-jitter: 0.2
+      processed-event-retention: 1s
+      processed-event-cleanup-interval: 500ms
 
 logging:
   level:

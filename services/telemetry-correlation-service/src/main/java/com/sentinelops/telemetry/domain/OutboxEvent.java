@@ -118,6 +118,15 @@ public class OutboxEvent {
     this.publishedAt = Instant.now();
   }
 
+  /**
+   * Marks this PENDING row as claimed for publication without changing its attempt count or status,
+   * by moving {@code nextAttemptAt} forward to {@code leaseUntil} — see the identical mechanism and
+   * rationale in the incident service's own {@code OutboxEvent}.
+   */
+  public void lease(Instant leaseUntil) {
+    this.nextAttemptAt = leaseUntil;
+  }
+
   public void recordFailedAttempt(String error, Instant nextAttemptAt, int maxAttempts) {
     this.attemptCount++;
     this.lastError = error;

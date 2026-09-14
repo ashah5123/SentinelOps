@@ -1,0 +1,174 @@
+{
+  "title": "SentinelOps Reliability",
+  "uid": "sentinelops-reliability",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "utc",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["sentinelops", "phase-6"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Outbox backlog (PENDING rows)",
+      "description": "Number of outbox rows waiting to be published, by service. A sustained increase means the broker is unreachable or rejecting sends.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sentinelops_outbox_backlog", "legendFormat": "incident-service" },
+        { "expr": "sentinelops_telemetry_outbox_backlog", "legendFormat": "telemetry-correlation-service" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Oldest unpublished event age (recovery-time proxy)",
+      "description": "Age of the oldest PENDING outbox row. Watch this fall back toward zero after a broker outage ends — that is how long recovery took.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sentinelops_outbox_oldest_pending_age_seconds", "legendFormat": "incident-service" },
+        {
+          "expr": "sentinelops_telemetry_outbox_oldest_pending_age_seconds",
+          "legendFormat": "telemetry-correlation-service"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 3,
+      "title": "Outbox publications: success vs. failure",
+      "description": "Rate of outbox publish attempts, by service and outcome.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_outbox_published_total[5m])) by (outcome)",
+          "legendFormat": "incident-service: {{outcome}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_outbox_published_total[5m])) by (outcome)",
+          "legendFormat": "telemetry-correlation-service: {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Outbox events dead-lettered (retries exhausted)",
+      "description": "Rate of outbox rows that exhausted their retry budget and moved to FAILED.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_outbox_dead_lettered_total[5m])) by (topic)",
+          "legendFormat": "incident-service: {{topic}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_outbox_dead_lettered_total[5m])) by (topic)",
+          "legendFormat": "telemetry-correlation-service: {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Consumer retry attempts",
+      "description": "Rate of retry attempts made by inbound Kafka consumers, by source topic.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_consumer_retry_attempts_total[5m])) by (topic)",
+          "legendFormat": "incident-service: {{topic}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_consumer_retry_attempts_total[5m])) by (topic)",
+          "legendFormat": "telemetry-correlation-service: {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Consumer records dead-lettered",
+      "description": "Rate of consumed records routed to a dead-letter topic (retries exhausted, or a non-retryable/permanent failure).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_consumer_dead_lettered_total[5m])) by (topic)",
+          "legendFormat": "incident-service: {{topic}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_consumer_dead_lettered_total[5m])) by (topic)",
+          "legendFormat": "telemetry-correlation-service: {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Consumer processing latency (p95)",
+      "description": "95th-percentile time to process one consumed record end to end, via Spring Kafka's listener observation.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(spring_kafka_listener_seconds_bucket{job=\"incident-service\"}[5m])) by (le))",
+          "legendFormat": "incident-service"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(spring_kafka_listener_seconds_bucket{job=\"telemetry-correlation-service\"}[5m])) by (le))",
+          "legendFormat": "telemetry-correlation-service"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 8,
+      "title": "Duplicate events ignored",
+      "description": "Rate of inbound events recognized as duplicates and safely ignored, across every idempotent consumer.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_anomaly_events_processed_total{outcome=\"duplicate\"}[5m]))",
+          "legendFormat": "incident-service: telemetry.anomaly.v1"
+        },
+        {
+          "expr": "sum(rate(sentinelops_evidence_correlated_events_processed_total{outcome=\"duplicate\"}[5m]))",
+          "legendFormat": "incident-service: incident.evidence.correlated.v1"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_deployment_events_processed_total{outcome=\"duplicate\"}[5m]))",
+          "legendFormat": "telemetry-correlation-service: deployment.changed.v1"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_dependency_events_processed_total{outcome=\"duplicate\"}[5m])) by (operation)",
+          "legendFormat": "telemetry-correlation-service: service.dependency.changed.v1 ({{operation}})"
+        },
+        {
+          "expr": "sum(rate(sentinelops_telemetry_incidents_correlated_total{outcome=\"duplicate\"}[5m]))",
+          "legendFormat": "telemetry-correlation-service: incident.detected.v1"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Circuit-breaker state (telemetry backends)",
+      "description": "1 = open (failing, short-circuited), 0 = closed (healthy).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "resilience4j_circuitbreaker_state{state=\"open\"}", "legendFormat": "{{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "max": 1, "min": 0 } }
+    }
+  ]
+}

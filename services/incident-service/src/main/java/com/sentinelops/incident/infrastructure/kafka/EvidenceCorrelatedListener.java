@@ -8,6 +8,7 @@ import com.sentinelops.incident.events.EventEnvelope;
 import com.sentinelops.incident.events.EventTypes;
 import com.sentinelops.incident.events.EvidenceCorrelatedPayload;
 import com.sentinelops.incident.infrastructure.persistence.ProcessedEventRepository;
+import com.sentinelops.incident.observability.IncidentMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -39,14 +40,17 @@ public class EvidenceCorrelatedListener {
   private final IncidentCommandService incidentCommandService;
   private final ProcessedEventRepository processedEventRepository;
   private final ObjectMapper objectMapper;
+  private final IncidentMetrics metrics;
 
   public EvidenceCorrelatedListener(
       IncidentCommandService incidentCommandService,
       ProcessedEventRepository processedEventRepository,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      IncidentMetrics metrics) {
     this.incidentCommandService = incidentCommandService;
     this.processedEventRepository = processedEventRepository;
     this.objectMapper = objectMapper;
+    this.metrics = metrics;
   }
 
   @KafkaListener(
@@ -66,6 +70,7 @@ public class EvidenceCorrelatedListener {
           "Ignoring duplicate correlated-evidence event eventId={} correlationId={}",
           sourceEventId,
           envelope.correlationId());
+      metrics.evidenceCorrelatedProcessed("duplicate");
       return;
     }
 
@@ -81,6 +86,7 @@ public class EvidenceCorrelatedListener {
 
     processedEventRepository.save(
         ProcessedEvent.record(sourceEventId, EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1));
+    metrics.evidenceCorrelatedProcessed("processed");
 
     log.info(
         "Recorded correlated evidence {} on incident {} (score={}) correlationId={}",

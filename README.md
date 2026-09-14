@@ -6,8 +6,9 @@ Status: **Foundation** — repository scaffolding, architecture, a
 local data/event-streaming platform (Phase 2), an incident-management
 control-plane service (Phase 3), a local observability baseline
 (Phase 4: OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo,
-Alertmanager), and a telemetry ingestion and deterministic correlation
-service (Phase 5). No authentication, Kubernetes, SLO/anomaly
+Alertmanager), a telemetry ingestion and deterministic correlation
+service (Phase 5), and reliability/failure-recovery hardening for both
+Java services (Phase 6). No authentication, Kubernetes, SLO/anomaly
 detection, AI/investigation functionality, frontend, or remediation
 execution are implemented yet. See
 [docs/roadmap.md](docs/roadmap.md) for current phase status, including
@@ -321,12 +322,28 @@ Full details, API reference, event contracts, correlation rules, and known limit
 [`services/telemetry-correlation-service/README.md`](services/telemetry-correlation-service/README.md).
 Architecture rationale: [ADR 0010](docs/decisions/0010-incremental-ingestion-and-correlation.md).
 
+## Reliability and failure recovery (Phase 6)
+
+Both Java services' transactional outbox, idempotent Kafka consumption, and retry/dead-letter
+handling were hardened for real failure conditions: the outbox no longer holds a database
+transaction open across the Kafka network call, retries use jittered exponential backoff,
+permanently-invalid events skip straight to the dead-letter topic, and `/actuator/health/readiness`
+now fails when PostgreSQL or the broker is actually unreachable. See
+[`docs/development/reliability.md`](docs/development/reliability.md) for the full guarantees, the
+operational runbook, and how to reproduce failure scenarios locally (`make reliability-test`);
+[ADR 0011](docs/decisions/0011-reliability-and-failure-recovery.md) for the design rationale; and
+[`docs/benchmarks/phase-6-reliability.md`](docs/benchmarks/phase-6-reliability.md) for what has
+actually been measured versus what remains blocked pending Docker availability. This is a
+cross-cutting hardening pass, not new user-facing capability — it does not add SLO evaluation,
+anomaly detection, or any other new phase of the roadmap.
+
 ## Project status
 
 **Foundation.** Repository scaffolding, architecture documentation, a
 local data/event-streaming platform (Phase 2), an incident-management
-service (Phase 3), a local observability baseline (Phase 4), and a
-telemetry ingestion/correlation service (Phase 5) exist.
+service (Phase 3), a local observability baseline (Phase 4), a
+telemetry ingestion/correlation service (Phase 5), and reliability/
+failure-recovery hardening (Phase 6) exist.
 No authentication, Kubernetes, SLO/anomaly detection, AI/investigation
 functionality, frontend, or remediation execution described above are
 implemented yet.

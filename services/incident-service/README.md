@@ -100,7 +100,10 @@ is unreachable.
 
 - `GET /actuator/health` — overall health, including database and Kafka-compatible broker
   connectivity (`KafkaConnectivityHealthIndicator`).
-- `GET /actuator/health/readiness` — whether the service is ready to receive traffic.
+- `GET /actuator/health/readiness` — whether the service is ready to receive traffic. As of
+  Phase 6 this fails (503) whenever PostgreSQL or the broker is unreachable, not just when the
+  application's own internal readiness state says otherwise — see
+  [ADR 0011](../../docs/decisions/0011-reliability-and-failure-recovery.md).
 - `GET /actuator/health/liveness` — whether the process should be restarted if unhealthy.
 
 ## Idempotency
@@ -121,6 +124,15 @@ FROM incidents.outbox_events
 WHERE status = 'FAILED'
 ORDER BY created_at DESC;
 ```
+
+## Reliability and failure recovery
+
+The outbox's claim/publish/finalize steps never hold a database transaction open across the
+Kafka network call; retries (both outbox and inbound-consumer) use jittered exponential backoff;
+malformed/invalid events skip retries and go straight to a dead-letter topic; and
+`processed_events` idempotency records are cleaned up on a configurable retention window. Full
+guarantees, retry/dead-letter behavior, a local fault-testing workflow (`make reliability-test`),
+and an operational runbook: [`docs/development/reliability.md`](../../docs/development/reliability.md).
 
 ## API and event documentation
 

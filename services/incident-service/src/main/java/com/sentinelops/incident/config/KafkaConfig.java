@@ -1,13 +1,15 @@
 package com.sentinelops.incident.config;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.sentinelops.incident.events.EventTypes;
+import com.sentinelops.incident.observability.IncidentMetrics;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,10 +19,10 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
-import org.springframework.util.backoff.ExponentialBackOff;
 
 /**
  * Kafka-compatible client configuration.
@@ -32,12 +34,22 @@ import org.springframework.util.backoff.ExponentialBackOff;
  *
  * <p>Delivery semantics are at-least-once, not exactly-once — see ADR 0008. The listener container
  * uses {@code AckMode.RECORD}, so an offset is only committed after the listener method (which
- * wraps the domain transaction) returns normally; a thrown exception is retried with bounded
- * exponential backoff and, once retries are exhausted, routed to the topic's dead-letter topic via
- * {@link DeadLetterPublishingRecoverer}.
+ * wraps the domain transaction) returns normally.
+ *
+ * <p>A thrown exception is retried with bounded exponential backoff plus jitter (see {@link
+ * JitteredExponentialBackOff}) — <b>except</b> for exceptions in {@link #NON_RETRYABLE_EXCEPTIONS},
+ * which are permanent by nature (malformed JSON, an invalid enum value) and are routed straight to
+ * the dead-letter topic without wasting retry attempts on a failure retrying can never fix. Once
+ * retries are exhausted (or a non-retryable exception is thrown), the record is routed to the
+ * topic's dead-letter topic via {@link DeadLetterPublishingRecoverer}, and {@link
+ * IncidentMetrics#consumerDeadLettered} is incremented.
  */
 @Configuration
 public class KafkaConfig {
+
+  @SuppressWarnings("unchecked")
+  private static final Class<? extends Exception>[] NON_RETRYABLE_EXCEPTIONS =
+      new Class[] {JsonProcessingException.class, IllegalArgumentException.class};
 
   private final KafkaProperties kafkaProperties;
 
@@ -74,34 +86,47 @@ public class KafkaConfig {
   public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
       ConsumerFactory<String, String> consumerFactory,
       KafkaTemplate<String, String> kafkaTemplate,
-      @Value("${sentinelops.incident-service.consumer.max-retries}") int maxRetries) {
+      IncidentServiceProperties properties,
+      IncidentMetrics metrics) {
+    IncidentServiceProperties.Consumer consumerProperties = properties.consumer();
     ConcurrentKafkaListenerContainerFactory<String, String> factory =
         new ConcurrentKafkaListenerContainerFactory<>();
     factory.setConsumerFactory(consumerFactory);
     factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+    // Preserves how many delivery attempts a record has had as a consumer-record header, so a
+    // dead-lettered record's retry count is visible alongside it (see the DLQ inspection
+    // procedure in docs/development/reliability.md).
+    factory.getContainerProperties().setDeliveryAttemptHeader(true);
 
-    DeadLetterPublishingRecoverer recoverer =
+    DeadLetterPublishingRecoverer deadLetterRecoverer =
         new DeadLetterPublishingRecoverer(
             kafkaTemplate,
             (record, exception) ->
                 switch (record.topic()) {
                   case EventTypes.TELEMETRY_ANOMALY_V1 ->
-                      new org.apache.kafka.common.TopicPartition(
-                          EventTypes.TELEMETRY_ANOMALY_V1_DLQ, -1);
+                      new TopicPartition(EventTypes.TELEMETRY_ANOMALY_V1_DLQ, -1);
                   case EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1 ->
-                      new org.apache.kafka.common.TopicPartition(
-                          EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1_DLQ, -1);
-                  default ->
-                      new org.apache.kafka.common.TopicPartition(record.topic() + ".dlq", -1);
+                      new TopicPartition(EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1_DLQ, -1);
+                  default -> new TopicPartition(record.topic() + ".dlq", -1);
                 });
+    ConsumerRecordRecoverer recoverer =
+        (record, exception) -> {
+          metrics.consumerDeadLettered(record.topic());
+          deadLetterRecoverer.accept(record, exception);
+        };
 
-    // Bounded exponential backoff: 1s, 2s, 4s, ... capped at 30s, for maxRetries attempts
-    // before the record is published to its dead-letter topic.
-    ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
-    backOff.setMaxInterval(30_000L);
-    backOff.setMaxElapsedTime(30_000L * maxRetries);
+    JitteredExponentialBackOff backOff =
+        new JitteredExponentialBackOff(
+            consumerProperties.retryInitialInterval().toMillis(),
+            consumerProperties.retryMultiplier(),
+            consumerProperties.retryMaxInterval().toMillis(),
+            consumerProperties.retryMaxInterval().toMillis() * consumerProperties.maxRetries(),
+            consumerProperties.retryJitter());
 
     DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
+    errorHandler.addNotRetryableExceptions(NON_RETRYABLE_EXCEPTIONS);
+    errorHandler.setRetryListeners(
+        (record, ex, deliveryAttempt) -> metrics.consumerRetryAttempted(record.topic()));
     factory.setCommonErrorHandler(errorHandler);
     return factory;
   }

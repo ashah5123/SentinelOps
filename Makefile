@@ -1,7 +1,8 @@
 .PHONY: help doctor validate infra-config infra-pull infra-up infra-down infra-status infra-logs infra-smoke infra-clean \
 	incident-build incident-test incident-image incident-up incident-down incident-logs \
 	observability-config observability-up observability-down observability-status observability-logs observability-smoke \
-	correlation-build correlation-test correlation-image correlation-up correlation-down correlation-status correlation-logs correlation-smoke
+	correlation-build correlation-test correlation-image correlation-up correlation-down correlation-status correlation-logs correlation-smoke \
+	reliability-test
 
 ENV_FILE := .env
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
@@ -41,6 +42,7 @@ help: ## Show available targets
 	@echo "  make correlation-down      Stop the telemetry-correlation-service container (infra keeps running)"
 	@echo "  make correlation-logs      Tail telemetry-correlation-service logs"
 	@echo "  make correlation-smoke     Run the Phase 5 correlation smoke test"
+	@echo "  make reliability-test      Run the Phase 6 fault-injection workflow (SCENARIO=...)"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -215,3 +217,8 @@ correlation-logs: infra-config ## Tail telemetry-correlation-service logs
 
 correlation-smoke: ## Run the Phase 5 correlation smoke test
 	@bash infrastructure/docker/scripts/correlation-smoke-test.sh
+
+## ---- Phase 6: reliability and failure recovery ----
+
+reliability-test: ## Run the Phase 6 fault-injection workflow (SCENARIO=duplicate-delivery|broker-outage|app-restart|invalid-event|retry-exhaustion|all, default: all)
+	@bash infrastructure/docker/scripts/reliability-fault-test.sh $${SCENARIO:-all}

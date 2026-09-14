@@ -19,8 +19,8 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
       minimum-idle: ${DB_POOL_MIN_IDLE:2}
-      connection-timeout: 5000
-      validation-timeout: 3000
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:5000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:3000}
       pool-name: incident-service-pool
   jpa:
     open-in-view: false
@@ -60,8 +60,24 @@ sentinelops:
       initial-backoff: ${OUTBOX_INITIAL_BACKOFF:1s}
       max-backoff: ${OUTBOX_MAX_BACKOFF:60s}
       retention-after-publish: ${OUTBOX_RETENTION_AFTER_PUBLISH:24h}
+      # How long a claimed-but-not-yet-published row is protected from being re-claimed by
+      # another publisher instance — must comfortably exceed publish-timeout.
+      lease-duration: ${OUTBOX_LEASE_DURATION:30s}
+      # Maximum time to wait for a single Kafka send to complete.
+      publish-timeout: ${OUTBOX_PUBLISH_TIMEOUT:10s}
+      # Fractional random jitter applied to the computed retry backoff (0.0 disables jitter).
+      backoff-jitter: ${OUTBOX_BACKOFF_JITTER:0.2}
     consumer:
       max-retries: ${ANOMALY_CONSUMER_MAX_RETRIES:5}
+      retry-initial-interval: ${ANOMALY_CONSUMER_RETRY_INITIAL_INTERVAL:1s}
+      retry-max-interval: ${ANOMALY_CONSUMER_RETRY_MAX_INTERVAL:30s}
+      retry-multiplier: ${ANOMALY_CONSUMER_RETRY_MULTIPLIER:2.0}
+      retry-jitter: ${ANOMALY_CONSUMER_RETRY_JITTER:0.2}
+      # How long a processed-event idempotency record is kept before cleanup. Must comfortably
+      # exceed the broker's topic retention (see REDPANDA_TOPIC_RETENTION_MS) so a message that
+      # is somehow redelivered after a long delay is still recognized as a duplicate.
+      processed-event-retention: ${ANOMALY_CONSUMER_PROCESSED_EVENT_RETENTION:8d}
+      processed-event-cleanup-interval: ${ANOMALY_CONSUMER_PROCESSED_EVENT_CLEANUP_INTERVAL:1h}
 
 management:
   endpoints:
@@ -73,6 +89,12 @@ management:
       show-details: when_authorized
       probes:
         enabled: true
+      group:
+        # Readiness fails (503) whenever PostgreSQL or the Kafka-compatible broker is
+        # unreachable, in addition to the application's own readiness state — a load balancer
+        # or orchestrator must stop sending traffic here until both dependencies recover.
+        readiness:
+          include: readinessState,db,kafkaConnectivity
   health:
     readinessstate:
       enabled: true
