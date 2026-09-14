@@ -1,0 +1,31 @@
+# Tempo configuration for the SentinelOps local observability stack.
+#
+# Single-binary, filesystem-backed deployment intended only for local development — trace
+# data is written under /var/tempo inside the named "sentinelops-tempo-data" volume.
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 48h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal

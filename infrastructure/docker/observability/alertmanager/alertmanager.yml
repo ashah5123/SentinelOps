@@ -1,0 +1,28 @@
+# Alertmanager configuration for the SentinelOps local observability stack.
+#
+# No email, Slack, PagerDuty, webhook, or any other external/paid integration is
+# configured anywhere in this file. The only receiver is "local-null", which accepts
+# alerts without forwarding them anywhere — alerts remain visible in the local
+# Alertmanager UI (http://127.0.0.1:9093) and API, satisfying local-only visibility
+# without risking accidental external delivery or alert loops.
+route:
+  receiver: local-null
+  group_by: ["alertname", "service"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - service="incident-service"
+      receiver: local-null
+      continue: false
+
+receivers:
+  - name: local-null
+
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ["alertname", "service"]

@@ -1,0 +1,136 @@
+{
+  "title": "SentinelOps Incident Processing",
+  "uid": "sentinelops-incident-processing",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "utc",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "tags": ["sentinelops", "phase-4"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Incidents created by severity",
+      "description": "Rate of incidents created, broken down by severity.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_incidents_created_total{job=\"incident-service\"}[5m])) by (severity)",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Incident status transitions",
+      "description": "Rate of incident status transitions, by from/to status.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_incidents_transitioned_total{job=\"incident-service\"}[5m])) by (from_status, to_status)",
+          "legendFormat": "{{from_status}} -> {{to_status}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Anomaly events processed",
+      "description": "Rate of consumed telemetry.anomaly.v1 events, by outcome (created/duplicate/failed).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_anomaly_events_processed_total{job=\"incident-service\"}[5m])) by (outcome)",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Duplicate anomaly events ignored",
+      "description": "Rate of anomaly events recognized as duplicates and skipped (idempotent consumption).",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_anomaly_events_processed_total{job=\"incident-service\", outcome=\"duplicate\"}[5m]))",
+          "legendFormat": "duplicates/s"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Outbox events published vs. failed",
+      "description": "Rate of transactional-outbox publish outcomes, by topic.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_outbox_published_total{job=\"incident-service\", outcome=\"success\"}[5m])) by (topic)",
+          "legendFormat": "published: {{topic}}"
+        },
+        {
+          "expr": "sum(rate(sentinelops_outbox_published_total{job=\"incident-service\", outcome=\"failure\"}[5m])) by (topic)",
+          "legendFormat": "failed: {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Outbox publish duration (p95)",
+      "description": "95th percentile time to publish one outbox event to Kafka, by topic.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(sentinelops_outbox_publish_duration_seconds_bucket{job=\"incident-service\"}[5m])) by (le, topic))",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 7,
+      "title": "Anomaly processing failures",
+      "description": "Rate of anomaly-event processing failures (exceptions), distinct from duplicate no-ops.",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(sentinelops_anomaly_events_processed_total{job=\"incident-service\", outcome=\"failed\"}[5m]))",
+          "legendFormat": "failures/s"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Recent correlated logs",
+      "description": "Structured incident-service logs, most recent first. Use the trace_id in each line's TraceID derived field to jump to Tempo.",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{service=\"incident-service\"}",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ]
+}

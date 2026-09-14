@@ -4,9 +4,13 @@ import com.sentinelops.incident.config.IncidentServiceProperties;
 import com.sentinelops.incident.domain.OutboxEvent;
 import com.sentinelops.incident.domain.OutboxStatus;
 import com.sentinelops.incident.infrastructure.persistence.OutboxEventRepository;
+import com.sentinelops.incident.observability.IncidentMetrics;
+import com.sentinelops.incident.observability.Spans;
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -46,14 +50,20 @@ public class OutboxPublisher {
   private final OutboxEventRepository outboxEventRepository;
   private final KafkaTemplate<String, String> kafkaTemplate;
   private final IncidentServiceProperties.Outbox properties;
+  private final IncidentMetrics incidentMetrics;
+  private final Spans spans;
 
   public OutboxPublisher(
       OutboxEventRepository outboxEventRepository,
       KafkaTemplate<String, String> kafkaTemplate,
-      IncidentServiceProperties properties) {
+      IncidentServiceProperties properties,
+      IncidentMetrics incidentMetrics,
+      Spans spans) {
     this.outboxEventRepository = outboxEventRepository;
     this.kafkaTemplate = kafkaTemplate;
     this.properties = properties.outbox();
+    this.incidentMetrics = incidentMetrics;
+    this.spans = spans;
   }
 
   @Scheduled(fixedDelayString = "${sentinelops.incident-service.outbox.polling-interval}")
@@ -67,16 +77,27 @@ public class OutboxPublisher {
   }
 
   private void publishOne(OutboxEvent event) {
+    String topic = event.getTopic();
+    spans.inSpan("outbox.publish", Map.of("topic", topic), () -> publishOneInSpan(event, topic));
+  }
+
+  private void publishOneInSpan(OutboxEvent event, String topic) {
+    Timer.Sample timerSample = incidentMetrics.startOutboxPublishTimer();
     try {
       kafkaTemplate
-          .send(event.getTopic(), event.getAggregateId().toString(), event.getPayload())
+          .send(topic, event.getAggregateId().toString(), event.getPayload())
           .get(KAFKA_SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       event.markPublished();
+      incidentMetrics.outboxPublished(topic, "success");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      incidentMetrics.outboxPublished(topic, "failure");
       recordFailure(event, e);
     } catch (ExecutionException | TimeoutException e) {
+      incidentMetrics.outboxPublished(topic, "failure");
       recordFailure(event, e);
+    } finally {
+      incidentMetrics.stopOutboxPublishTimer(timerSample, topic);
     }
   }
 

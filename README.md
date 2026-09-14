@@ -3,10 +3,15 @@
 **Cloud-native incident detection and investigation platform.**
 
 Status: **Foundation** — repository scaffolding, architecture, a
-local data/event-streaming platform (Phase 2), and an incident-management
-control-plane service (Phase 3). No authentication, Kubernetes,
-observability stack, AI functionality, frontend, or other application
-services are implemented yet.
+local data/event-streaming platform (Phase 2), an incident-management
+control-plane service (Phase 3), and a local observability baseline
+(Phase 4: OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo,
+Alertmanager, wired into the incident service's own metrics, traces,
+and structured logs). No authentication, Kubernetes, AI/investigation
+functionality, frontend, telemetry ingestion/correlation service, or
+remediation execution are implemented yet. See
+[docs/roadmap.md](docs/roadmap.md) for current phase status, including
+outstanding runtime-verification items.
 
 ## Overview
 
@@ -273,13 +278,35 @@ make incident-down
 Full details, API reference, event contracts, and known limitations:
 [`services/incident-service/README.md`](services/incident-service/README.md).
 
+## Observability stack (Phase 4)
+
+Phase 4 adds a local OpenTelemetry Collector, Prometheus, Grafana,
+Loki, Tempo, and Alertmanager, wired into the incident service's
+metrics, distributed traces, and structured logs. It runs as its own
+opt-in Compose profile, independent of `app`:
+
+```bash
+make observability-up      # start otel-collector, prometheus, loki, tempo, alertmanager, grafana
+make observability-status
+make observability-smoke   # end-to-end check: metrics/logs/traces flow and alert rules load
+make observability-down    # stop, keeping all persistent volumes
+```
+
+Grafana (http://127.0.0.1:3001) ships with two provisioned dashboards
+("SentinelOps Service Overview" and "SentinelOps Incident Processing")
+and datasources wired for trace-to-log correlation. Full endpoint
+list, data-flow diagram, and how to trace a single request across
+Grafana/Tempo/Loki: [`docs/development/observability.md`](docs/development/observability.md).
+Architecture rationale: [ADR 0009](docs/decisions/0009-local-observability-stack-topology.md).
+
 ## Project status
 
 **Foundation.** Repository scaffolding, architecture documentation, a
-local data/event-streaming platform (Phase 2), and an incident-management
-service (Phase 3) exist. No authentication, Kubernetes, observability
-stack, AI functionality, frontend, or other application services
-described above are implemented yet.
+local data/event-streaming platform (Phase 2), an incident-management
+service (Phase 3), and a local observability baseline (Phase 4) exist.
+No authentication, Kubernetes, AI/investigation functionality,
+frontend, telemetry ingestion/correlation service, or remediation
+execution described above are implemented yet.
 
 ## Author
 

@@ -202,3 +202,10 @@ make incident-up      # start infra + the incident service
 make incident-logs
 make incident-down
 ```
+
+## Observability stack (Phase 4)
+
+A separate, opt-in `observability` Compose profile (OpenTelemetry
+Collector, Prometheus, Grafana, Loki, Tempo, Alertmanager) is wired
+into the incident service's metrics, traces, and structured logs. It
+has its own document: [`docs/development/observability.md`](observability.md).

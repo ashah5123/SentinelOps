@@ -10,6 +10,8 @@ import com.sentinelops.incident.events.IncidentDetectedPayload;
 import com.sentinelops.incident.infrastructure.persistence.IncidentEvidenceRepository;
 import com.sentinelops.incident.infrastructure.persistence.IncidentRepository;
 import com.sentinelops.incident.infrastructure.persistence.IncidentStatusHistoryRepository;
+import com.sentinelops.incident.observability.IncidentMetrics;
+import com.sentinelops.incident.observability.Spans;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -32,6 +34,8 @@ public class IncidentCommandService {
   private final IncidentNumberGenerator incidentNumberGenerator;
   private final AuditRecorder auditRecorder;
   private final OutboxWriter outboxWriter;
+  private final IncidentMetrics incidentMetrics;
+  private final Spans spans;
 
   public IncidentCommandService(
       IncidentRepository incidentRepository,
@@ -39,51 +43,61 @@ public class IncidentCommandService {
       IncidentEvidenceRepository evidenceRepository,
       IncidentNumberGenerator incidentNumberGenerator,
       AuditRecorder auditRecorder,
-      OutboxWriter outboxWriter) {
+      OutboxWriter outboxWriter,
+      IncidentMetrics incidentMetrics,
+      Spans spans) {
     this.incidentRepository = incidentRepository;
     this.statusHistoryRepository = statusHistoryRepository;
     this.evidenceRepository = evidenceRepository;
     this.incidentNumberGenerator = incidentNumberGenerator;
     this.auditRecorder = auditRecorder;
     this.outboxWriter = outboxWriter;
+    this.incidentMetrics = incidentMetrics;
+    this.spans = spans;
   }
 
   @Transactional
   public Incident createIncident(CreateIncidentCommand command) {
-    Incident incident = persistNewIncident(command);
+    return spans.inSpan(
+        "incident.create",
+        Map.of("severity", command.severity().name()),
+        () -> {
+          Incident incident = persistNewIncident(command);
 
-    statusHistoryRepository.save(
-        IncidentStatusHistory.record(
-            incident.getId(),
-            null,
-            IncidentStatus.DETECTED,
-            "Incident created",
-            command.correlationId()));
+          statusHistoryRepository.save(
+              IncidentStatusHistory.record(
+                  incident.getId(),
+                  null,
+                  IncidentStatus.DETECTED,
+                  "Incident created",
+                  command.correlationId()));
 
-    auditRecorder.record(
-        incident.getId(),
-        "INCIDENT_CREATED",
-        command.actorType(),
-        command.actorId(),
-        command.correlationId(),
-        Map.of("severity", incident.getSeverity().name(), "source", incident.getSource()));
+          auditRecorder.record(
+              incident.getId(),
+              "INCIDENT_CREATED",
+              command.actorType(),
+              command.actorId(),
+              command.correlationId(),
+              Map.of("severity", incident.getSeverity().name(), "source", incident.getSource()));
 
-    outboxWriter.append(
-        "Incident",
-        incident.getId(),
-        EventTypes.INCIDENT_DETECTED_V1,
-        EventTypes.INCIDENT_DETECTED_SCHEMA_VERSION,
-        new IncidentDetectedPayload(
-            incident.getId(),
-            incident.getIncidentNumber(),
-            incident.getTitle(),
-            incident.getSeverity().name(),
-            incident.getAffectedService(),
-            incident.getSource(),
-            incident.getDetectedAt()),
-        command.correlationId());
+          outboxWriter.append(
+              "Incident",
+              incident.getId(),
+              EventTypes.INCIDENT_DETECTED_V1,
+              EventTypes.INCIDENT_DETECTED_SCHEMA_VERSION,
+              new IncidentDetectedPayload(
+                  incident.getId(),
+                  incident.getIncidentNumber(),
+                  incident.getTitle(),
+                  incident.getSeverity().name(),
+                  incident.getAffectedService(),
+                  incident.getSource(),
+                  incident.getDetectedAt()),
+              command.correlationId());
 
-    return incident;
+          incidentMetrics.incidentCreated(incident.getSeverity().name());
+          return incident;
+        });
   }
 
   private Incident persistNewIncident(CreateIncidentCommand command) {
@@ -118,24 +132,31 @@ public class IncidentCommandService {
   @Transactional
   public Incident transition(
       UUID incidentId, IncidentStatus newStatus, String reason, String correlationId) {
-    Incident incident = getIncidentOrThrow(incidentId);
-    IncidentStatus previousStatus = incident.getStatus();
+    return spans.inSpan(
+        "incident.transition",
+        Map.of("to_status", newStatus.name()),
+        () -> {
+          Incident incident = getIncidentOrThrow(incidentId);
+          IncidentStatus previousStatus = incident.getStatus();
 
-    incident.transitionTo(newStatus, reason);
-    incidentRepository.save(incident);
+          incident.transitionTo(newStatus, reason);
+          incidentRepository.save(incident);
 
-    statusHistoryRepository.save(
-        IncidentStatusHistory.record(incidentId, previousStatus, newStatus, reason, correlationId));
+          statusHistoryRepository.save(
+              IncidentStatusHistory.record(
+                  incidentId, previousStatus, newStatus, reason, correlationId));
 
-    auditRecorder.record(
-        incidentId,
-        "INCIDENT_TRANSITIONED",
-        ActorType.LOCAL_USER,
-        "local-operator",
-        correlationId,
-        Map.of("from", previousStatus.name(), "to", newStatus.name()));
+          auditRecorder.record(
+              incidentId,
+              "INCIDENT_TRANSITIONED",
+              ActorType.LOCAL_USER,
+              "local-operator",
+              correlationId,
+              Map.of("from", previousStatus.name(), "to", newStatus.name()));
 
-    return incident;
+          incidentMetrics.incidentTransitioned(previousStatus.name(), newStatus.name());
+          return incident;
+        });
   }
 
   @Transactional

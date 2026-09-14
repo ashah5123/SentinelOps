@@ -1,0 +1,90 @@
+# Alerting rules for the SentinelOps local observability stack.
+#
+# Thresholds below are deliberately conservative defaults chosen for a single-instance,
+# low-traffic local development environment. They are NOT production thresholds — a real
+# deployment must derive thresholds from actual workload/SLO data per service (see
+# docs/development/observability.md).
+groups:
+  - name: sentinelops-service-health
+    rules:
+      - alert: SentinelOpsIncidentServiceDown
+        expr: up{job="incident-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: incident-service
+        annotations:
+          summary: "incident-service is unreachable"
+          description: >-
+            Prometheus has been unable to scrape incident-service for at least 1 minute.
+            Check `make incident-logs` and container health.
+
+      - alert: SentinelOpsHighHttp5xxRate
+        expr: >
+          sum(rate(http_server_requests_seconds_count{job="incident-service", outcome="SERVER_ERROR"}[5m]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="incident-service"}[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "Elevated HTTP 5xx rate on incident-service"
+          description: >-
+            More than 5% of incident-service HTTP responses over the last 5 minutes were
+            5xx. Local-dev threshold only — tune per real workload.
+
+      - alert: SentinelOpsHighRequestLatency
+        expr: >
+          histogram_quantile(0.95,
+            sum(rate(http_server_requests_seconds_bucket{job="incident-service"}[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "p95 request latency above 1s on incident-service"
+          description: >-
+            The 95th percentile HTTP request duration has exceeded 1 second for 5 minutes.
+            Local-dev threshold only — tune per real workload/SLO.
+
+  - name: sentinelops-kafka-and-outbox
+    rules:
+      - alert: SentinelOpsKafkaConsumerErrors
+        expr: increase(spring_kafka_listener_seconds_count{job="incident-service", exception!="none"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "Kafka listener errors on incident-service"
+          description: >-
+            The anomaly-event Kafka listener has recorded at least one exception in the
+            last 5 minutes. Check `make incident-logs` for the stack trace.
+
+      - alert: SentinelOpsOutboxPublishFailures
+        expr: increase(sentinelops_outbox_published_total{job="incident-service", outcome="failure"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "Transactional outbox publish failures"
+          description: >-
+            At least one outbox event failed to publish to Kafka in the last 5 minutes.
+            Rows that exhaust their retry budget are marked FAILED and require manual
+            inspection (see docs/development/local-platform.md).
+
+      - alert: SentinelOpsAnomalyProcessingFailures
+        expr: increase(sentinelops_anomaly_events_processed_total{job="incident-service", outcome="failed"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: incident-service
+        annotations:
+          summary: "Anomaly-event processing failures"
+          description: >-
+            At least one telemetry.anomaly.v1 event failed processing (raised an
+            exception) in the last 5 minutes, distinct from duplicate-event no-ops.

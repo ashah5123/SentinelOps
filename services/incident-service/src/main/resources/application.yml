@@ -44,6 +44,10 @@ spring:
       auto-offset-reset: earliest
     producer:
       acks: all
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
 
 sentinelops:
   incident-service:
@@ -63,7 +67,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: when_authorized
@@ -74,6 +78,29 @@ management:
       enabled: true
     livenessstate:
       enabled: true
+  metrics:
+    tags:
+      service: ${spring.application.name}
+      environment: ${ENVIRONMENT:local}
+  tracing:
+    sampling:
+      # Sample every request locally so traces are reliably visible in Tempo during
+      # development. A real deployment should tune this down per traffic volume.
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}/v1/traces
+    logging:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}/v1/logs
+      transport: grpc
+  opentelemetry:
+    resource-attributes:
+      deployment.environment: ${ENVIRONMENT:local}
+
+# datasource-micrometer-spring-boot (on the classpath — see pom.xml) auto-instruments the
+# DataSource bean with Micrometer Observation, emitting a "jdbc.query" span per statement
+# (SQL text and connection-pool tags only — never bind parameter values) nested under
+# whichever request/consumer span triggered it. No further configuration is required.
 
 logging:
   structured:

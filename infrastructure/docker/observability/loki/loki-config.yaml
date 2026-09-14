@@ -1,0 +1,52 @@
+# Loki configuration for the SentinelOps local observability stack.
+#
+# Single-binary, filesystem-backed deployment intended only for local development — all
+# data is written under /loki inside the named "sentinelops-loki-data" volume. Native
+# OTLP log ingestion is enabled so the OpenTelemetry Collector can export logs directly
+# (see otel-collector-config.yaml's otlphttp/loki exporter) without a separate log-shipping
+# agent.
+auth_enabled: false
+
+server:
+  http_listen_address: 0.0.0.0
+  http_listen_port: 3100
+  grpc_listen_address: 0.0.0.0
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Keep configured Loki labels low-cardinality (service, environment, level — see the
+  # OTel Collector's resource-attribute mapping and docs/development/observability.md);
+  # trace/correlation identifiers stay in the log body, never as labels.
+  allow_structured_metadata: true
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_label_names_per_series: 15
+  ingestion_rate_mb: 8
+  ingestion_burst_size_mb: 16
+  retention_period: 168h
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem

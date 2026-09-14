@@ -1,5 +1,6 @@
 .PHONY: help doctor validate infra-config infra-pull infra-up infra-down infra-status infra-logs infra-smoke infra-clean \
-	incident-build incident-test incident-image incident-up incident-down incident-logs
+	incident-build incident-test incident-image incident-up incident-down incident-logs \
+	observability-config observability-up observability-down observability-status observability-logs observability-smoke
 
 ENV_FILE := .env
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
@@ -25,6 +26,12 @@ help: ## Show available targets
 	@echo "  make incident-up     Start infra + the incident service (app profile)"
 	@echo "  make incident-down   Stop the incident-service container (infra keeps running)"
 	@echo "  make incident-logs   Tail incident-service logs"
+	@echo "  make observability-config  Validate the observability Compose configuration"
+	@echo "  make observability-up      Start the observability stack (observability profile)"
+	@echo "  make observability-down    Stop the observability stack, keeping persistent volumes"
+	@echo "  make observability-status  Show observability service status/health"
+	@echo "  make observability-logs    Show recent observability stack logs"
+	@echo "  make observability-smoke   Run the observability smoke test"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -145,3 +152,33 @@ incident-down: infra-config ## Stop only the incident-service container; infra k
 
 incident-logs: infra-config ## Tail incident-service logs
 	$(COMPOSE) --profile app logs -f incident-service
+
+## ---- Phase 4: observability stack ----
+##
+## All targets below operate only on the "observability" Compose profile
+## (OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo, Alertmanager).
+## They never touch the Phase 2/3 core services or their volumes.
+
+OBSERVABILITY_SERVICES := otel-collector prometheus loki tempo alertmanager grafana
+
+observability-config: ## Validate the observability Compose configuration
+	@test -f $(ENV_FILE) || (echo "ERROR: $(ENV_FILE) not found. Run: cp .env.example .env" && exit 1)
+	$(COMPOSE) --profile observability config --quiet
+	@echo "OK: observability compose configuration is valid"
+
+observability-up: observability-config ## Start the observability stack and wait for healthy services
+	$(COMPOSE) --profile observability up -d --wait $(OBSERVABILITY_SERVICES)
+	@echo "SentinelOps observability stack is up."
+
+observability-down: observability-config ## Stop the observability stack without deleting persistent volumes
+	$(COMPOSE) --profile observability stop $(OBSERVABILITY_SERVICES)
+	@echo "SentinelOps observability stack stopped. Volumes were preserved."
+
+observability-status: observability-config ## Show observability service status/health
+	$(COMPOSE) --profile observability ps $(OBSERVABILITY_SERVICES)
+
+observability-logs: observability-config ## Show recent observability stack logs
+	$(COMPOSE) --profile observability logs --tail=100 $(OBSERVABILITY_SERVICES)
+
+observability-smoke: ## Run the observability smoke test
+	@bash infrastructure/docker/scripts/observability-smoke-test.sh

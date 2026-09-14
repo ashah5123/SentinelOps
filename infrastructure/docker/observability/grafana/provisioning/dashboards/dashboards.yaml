@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning for the SentinelOps local observability stack.
+# Loads every dashboard JSON file under ../../dashboards on startup and keeps them in
+# sync with the files on disk (editable in the UI, but file changes win on restart).
+apiVersion: 1
+
+providers:
+  - name: sentinelops
+    orgId: 1
+    folder: SentinelOps
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/files
+      foldersFromFilesStructure: false

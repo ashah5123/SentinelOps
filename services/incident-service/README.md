@@ -85,6 +85,17 @@ All configuration is environment-driven — see the root `.env.example` for the 
 max request body size). Missing required configuration fails service startup rather than
 silently falling back to an unsafe default.
 
+## Observability
+
+Emits metrics (`GET /actuator/prometheus`), distributed traces, and structured logs via
+Micrometer and OpenTelemetry — see
+[`docs/development/observability.md`](../../docs/development/observability.md) for the full
+local stack (OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo, Alertmanager), the
+custom metric catalog, and how to trace one request end-to-end. `OTEL_EXPORTER_OTLP_ENDPOINT`
+(default `http://localhost:4317`, or `http://otel-collector:4317` inside Compose) controls
+where telemetry is sent; the service starts and serves traffic normally even if that endpoint
+is unreachable.
+
 ## Health, readiness, and liveness
 
 - `GET /actuator/health` — overall health, including database and Kafka-compatible broker

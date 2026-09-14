@@ -34,9 +34,9 @@ Actors:
 
 | Component | Responsibility |
 |---|---|
-| OpenTelemetry Collector | Collects metrics, traces, and logs from monitored services and forwards them to storage/backends. |
-| Prometheus / Loki / Tempo / Alertmanager | Store and alert on metrics, logs, and traces respectively. |
-| **Incident Service (Java, implemented — Phase 3)** | Owns the incident aggregate and its lifecycle, records evidence and audit history, and publishes incident/audit events through a transactional outbox. See `services/incident-service/README.md`. |
+| **OpenTelemetry Collector (implemented — Phase 4)** | Receives OTLP traces/logs from the incident service and forwards traces to Tempo and logs to Loki; also exposes received metrics as a Prometheus scrape target. Local-only — see `docs/development/observability.md`. |
+| **Prometheus / Loki / Tempo / Alertmanager (implemented — Phase 4)** | Store and alert on metrics, logs, and traces respectively, for the incident service only so far — no other service exists yet to monitor. |
+| **Incident Service (Java, implemented — Phase 3; instrumented — Phase 4)** | Owns the incident aggregate and its lifecycle, records evidence and audit history, and publishes incident/audit events through a transactional outbox. Emits its own metrics, traces, and structured logs via Micrometer/OpenTelemetry. See `services/incident-service/README.md`. |
 | Ingestion & Correlation Service (Java) | Normalizes and correlates telemetry, deployment events, and dependency metadata. |
 | Detection Engine (Java) | Evaluates SLOs, detects anomalies, and raises candidate incidents (published as `telemetry.anomaly.v1`, consumed by the Incident Service). |
 | Investigation Agent (Python, LangGraph) | Orchestrates root-cause investigation: gathers evidence, retrieves runbooks, and drafts findings. |
@@ -76,9 +76,14 @@ sequenceDiagram
 
 ## 4. Data flow
 
-1. Instrumented services emit OpenTelemetry signals.
+1. Instrumented services emit OpenTelemetry signals. **Implemented
+   today (Phase 4):** the Incident Service emits Micrometer/Prometheus
+   metrics (scraped directly), OTLP traces, and OTLP-exported
+   structured logs — see `docs/development/observability.md` and
+   [ADR 0009](../decisions/0009-local-observability-stack-topology.md).
 2. The collector routes metrics to Prometheus, logs to Loki, and traces
-   to Tempo.
+   to Tempo. **Implemented today (Phase 4)** for the Incident Service's
+   own telemetry; no other monitored service exists yet.
 3. The Ingestion & Correlation Service reads from these backends plus
    deployment/dependency metadata and normalizes them into a common
    incident-evidence model, persisted in PostgreSQL.

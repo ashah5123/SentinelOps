@@ -53,7 +53,7 @@ later phases so this phase stays small and testable.
   installed in the environment this phase was authored in. This must
   be completed and confirmed before Phase 2 is considered fully done.
 
-## Phase 3 — Incident management service (current)
+## Phase 3 — Incident management service
 
 **Goal:** Build a production-quality incident-management control-plane
 service (Java 21, Spring Boot). No frontend, AI investigator,
@@ -90,17 +90,53 @@ backend yet.
   This must be completed and confirmed before Phase 3 is considered
   fully done.
 
-## Phase 4 — Observability baseline
+## Phase 4 — Observability baseline (current)
 
 **Goal:** Stand up the OpenTelemetry Collector, Prometheus, Grafana,
 Loki, Tempo, and Alertmanager locally, and wire the incident service's
 existing structured logs/correlation IDs into real traces and metrics.
 
 **Acceptance criteria:**
-- The incident service emits metrics, logs, and traces via
-  OpenTelemetry.
-- Telemetry is visible in Grafana, sourced from Prometheus, Loki, and
-  Tempo, with trace-to-log correlation demonstrated.
+- [x] The incident service emits metrics (Micrometer +
+  `micrometer-registry-prometheus`), traces (Micrometer Tracing + the
+  OpenTelemetry OTLP bridge, W3C context propagation over HTTP and
+  Kafka), and structured logs (existing ECS JSON console output, plus
+  an `OpenTelemetryAppender` exporting the same log records over
+  OTLP), including custom low-cardinality metrics for incident
+  creation/transitions, anomaly-event outcomes, and outbox publish
+  outcomes/duration (see `docs/development/observability.md`).
+- [x] Docker Compose defines an `observability` profile (OpenTelemetry
+  Collector, Prometheus, Grafana, Loki, Tempo, Alertmanager) with
+  pinned image versions, localhost-only port bindings, health checks,
+  named volumes, and conservative resource limits (ADR 0009).
+- [x] Grafana is provisioned (not click-configured) with Prometheus,
+  Loki, and Tempo datasources, trace-to-log and log-to-trace
+  correlation, and two dashboards ("SentinelOps Service Overview",
+  "SentinelOps Incident Processing").
+- [x] Prometheus alerting rules cover elevated 5xx rate, request
+  latency, service unavailability, Kafka consumer errors, outbox
+  publish failures, and anomaly-processing failures, with documented
+  local-development-only thresholds; Alertmanager is configured with a
+  local-only no-op receiver (no email/Slack/PagerDuty/external
+  integration).
+- [x] `Makefile` provides `observability-config`, `observability-up`,
+  `observability-down`, `observability-status`, `observability-logs`,
+  and `observability-smoke`, and an idempotent, bounded-retry smoke
+  test exists.
+- [x] Unit tests cover the new custom-metrics helper, the tracing-span
+  helper (including error handling), and the logback configuration's
+  structure; all pre-existing Phase 1–3 tests continue to pass.
+- [ ] End-to-end runtime verification (`make observability-up`, full
+  observability smoke-test pass, Grafana dashboards rendering live
+  data sourced from real requests, alert rules loaded and visible in
+  Prometheus/Alertmanager, restart-and-persist check for Prometheus
+  and Grafana data) — **blocked**: Docker was not installed in the
+  environment this phase was authored in. Static validation (YAML/JSON
+  config parsing, `mvn verify` excluding Docker-dependent tests, and
+  the Maven package build) was completed and passes. This must be
+  completed and confirmed before Phase 4 is considered fully done —
+  see `docs/development/observability.md`'s implementation-status
+  section for the exact list.
 
 ## Phase 5 — Telemetry ingestion and correlation service
 
