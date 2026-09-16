@@ -1,5 +1,7 @@
 package com.sentinelops.incident.web.error;
 
+import com.sentinelops.incident.ai.AiRateLimitedException;
+import com.sentinelops.incident.ai.AiSuggestionNotFoundException;
 import com.sentinelops.incident.application.DeadLetterReplayService.IneligibleDeadLetterTopicException;
 import com.sentinelops.incident.application.IdempotencyConflictException;
 import com.sentinelops.incident.application.IncidentNotFoundException;
@@ -93,6 +95,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       IneligibleDeadLetterTopicException e, HttpServletRequest request) {
     return build(
         HttpStatus.BAD_REQUEST, ErrorCode.DEAD_LETTER_TOPIC_NOT_ELIGIBLE, e.getMessage(), request);
+  }
+
+  @ExceptionHandler(AiSuggestionNotFoundException.class)
+  public ProblemDetail handleAiSuggestionNotFound(
+      AiSuggestionNotFoundException e, HttpServletRequest request) {
+    return build(HttpStatus.NOT_FOUND, ErrorCode.AI_SUGGESTION_NOT_FOUND, e.getMessage(), request);
+  }
+
+  @ExceptionHandler(AiRateLimitedException.class)
+  public org.springframework.http.ResponseEntity<ProblemDetail> handleAiRateLimited(
+      AiRateLimitedException e, HttpServletRequest request) {
+    ProblemDetail problem =
+        build(HttpStatus.TOO_MANY_REQUESTS, ErrorCode.AI_RATE_LIMITED, e.getMessage(), request);
+    return org.springframework.http.ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, e.retryAfter().toSeconds())))
+        .body(problem);
   }
 
   @ExceptionHandler(IdempotencyConflictException.class)

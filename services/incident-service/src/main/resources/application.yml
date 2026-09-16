@@ -33,7 +33,7 @@ spring:
         format_sql: false
   flyway:
     enabled: true
-    schemas: incidents,audit
+    schemas: incidents,audit,runbooks
     default-schema: incidents
     locations: classpath:db/migration
     baseline-on-migrate: false
@@ -91,6 +91,32 @@ sentinelops:
       retry-max-interval: ${ANOMALY_CONSUMER_RETRY_MAX_INTERVAL:30s}
       retry-multiplier: ${ANOMALY_CONSUMER_RETRY_MULTIPLIER:2.0}
       retry-jitter: ${ANOMALY_CONSUMER_RETRY_JITTER:0.2}
+  # AI-assisted incident triage (Phase 11). Disabled by default: this is an optional, human-
+  # reviewed assistance feature, never required for the core application. See
+  # docs/development/ai-triage.md.
+  ai:
+    enabled: ${AI_TRIAGE_ENABLED:false}
+    provider: ${AI_PROVIDER:deterministic}
+    embedding-provider: ${AI_EMBEDDING_PROVIDER:deterministic}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${OLLAMA_MODEL:llama3.2}
+      embedding-model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+      timeout: ${AI_OLLAMA_TIMEOUT:20s}
+      max-retries: ${AI_OLLAMA_MAX_RETRIES:2}
+    retrieval:
+      backend: ${AI_RETRIEVAL_BACKEND:pgvector}
+      top-k: ${AI_RETRIEVAL_TOP_K:5}
+      min-score: ${AI_RETRIEVAL_MIN_SCORE:0.2}
+    circuit-breaker:
+      failure-threshold: ${AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD:5}
+      open-duration: ${AI_CIRCUIT_BREAKER_OPEN_DURATION:30s}
+    rate-limit:
+      cooldown: ${AI_RATE_LIMIT_COOLDOWN:10s}
+    prompt:
+      max-description-chars: ${AI_PROMPT_MAX_DESCRIPTION_CHARS:4000}
+      max-passage-chars: ${AI_PROMPT_MAX_PASSAGE_CHARS:1500}
+      template-version: v1
       # How long a processed-event idempotency record is kept before cleanup. Must comfortably
       # exceed the broker's topic retention (see REDPANDA_TOPIC_RETENTION_MS) so a message that
       # is somehow redelivered after a long delay is still recognized as a duplicate.

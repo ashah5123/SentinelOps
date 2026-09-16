@@ -3,6 +3,7 @@ package com.sentinelops.incident.application;
 import com.sentinelops.incident.domain.ActorType;
 import com.sentinelops.incident.domain.Incident;
 import com.sentinelops.incident.domain.IncidentEvidence;
+import com.sentinelops.incident.domain.IncidentSeverity;
 import com.sentinelops.incident.domain.IncidentStatus;
 import com.sentinelops.incident.domain.IncidentStatusHistory;
 import com.sentinelops.incident.events.EventTypes;
@@ -251,6 +252,38 @@ public class IncidentCommandService {
         Map.of(
             "previousAssignee", previousAssignee == null ? "none" : previousAssignee,
             "newAssignee", assigneeId == null ? "none" : assigneeId));
+
+    return incident;
+  }
+
+  /**
+   * Changes an incident's severity. Independent of lifecycle status. Added in Phase 11 so that
+   * accepting an AI-suggested severity (see {@code com.sentinelops.incident.ai.AiTriageService})
+   * can go through the same authorized, audited command path as every other incident mutation,
+   * rather than the AI layer writing to the incident directly.
+   */
+  @Transactional
+  public Incident changeSeverity(
+      UUID incidentId,
+      IncidentSeverity newSeverity,
+      String reason,
+      String correlationId,
+      String actorId) {
+    Incident incident = getIncidentOrThrow(incidentId);
+    var previousSeverity = incident.getSeverity();
+    incident.changeSeverity(newSeverity);
+    incidentRepository.save(incident);
+
+    auditRecorder.record(
+        incidentId,
+        "INCIDENT_SEVERITY_CHANGED",
+        ActorType.LOCAL_USER,
+        actorId,
+        correlationId,
+        Map.of(
+            "previousSeverity", previousSeverity.name(),
+            "newSeverity", newSeverity.name(),
+            "reason", reason == null ? "" : reason));
 
     return incident;
   }

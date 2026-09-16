@@ -94,7 +94,15 @@ jobs:
       # MigrationUpgradePathTest — see docs/development/operations.md's migration section) in one
       # pass: all are plain JUnit tests Maven Surefire/Failsafe discovers and runs as part of the
       # module's normal `verify` build, so a separate duplicate job would only waste runner time.
-      - name: mvnw verify (unit, security, reliability/idempotency, and migration tests)
+      #
+      # Phase 11 (AI-assisted triage): the com.sentinelops.incident.ai.** unit/integration tests,
+      # including AiEvaluationTest's retrieval/generation metrics, also run here automatically —
+      # they use the deterministic provider and in-memory retrieval per
+      # src/test/resources/application-test.yml, so this job needs neither Ollama nor a GPU nor
+      # any paid API. A live-model evaluation against a real Ollama instance is intentionally not
+      # part of this job (see docs/development/ai-triage.md's evaluation section) — it requires a
+      # locally running model and is opt-in/manual only, never a CI gate.
+      - name: mvnw verify (unit, security, reliability/idempotency, migration, and AI-triage tests)
         working-directory: services/incident-service
         run: ./mvnw -B verify
 

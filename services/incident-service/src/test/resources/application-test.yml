@@ -5,7 +5,7 @@ spring:
     hibernate:
       ddl-auto: validate
   flyway:
-    schemas: incidents,audit
+    schemas: incidents,audit,runbooks
     default-schema: incidents
 
 sentinelops:
@@ -39,6 +39,29 @@ sentinelops:
       retry-jitter: 0.2
       processed-event-retention: 1s
       processed-event-cleanup-interval: 500ms
+  ai:
+    enabled: true
+    provider: deterministic
+    embedding-provider: deterministic
+    ollama:
+      base-url: http://localhost:11434
+      model: llama3.2
+      embedding-model: nomic-embed-text
+      timeout: 5s
+      max-retries: 1
+    retrieval:
+      backend: in-memory
+      top-k: 5
+      min-score: 0.2
+    circuit-breaker:
+      failure-threshold: 3
+      open-duration: 5s
+    rate-limit:
+      cooldown: 0s
+    prompt:
+      max-description-chars: 4000
+      max-passage-chars: 1500
+      template-version: v1
 
 logging:
   level:

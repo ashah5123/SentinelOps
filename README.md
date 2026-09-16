@@ -199,6 +199,7 @@ with acceptance criteria. In summary:
 - [Authentication, authorization, and audit logging](docs/development/security.md)
 - [Performance testing and reproducible benchmarks](docs/development/performance.md)
 - [Production readiness, CI/CD, backup, and release recovery](docs/development/operations.md)
+- [AI-assisted incident triage](docs/development/ai-triage.md)
 - [Operator console](frontend/README.md)
 - [Incident-service README](services/incident-service/README.md)
 - [Incident-service API reference](docs/api/incident-service.md)

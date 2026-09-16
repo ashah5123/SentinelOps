@@ -13,6 +13,7 @@ import { AsyncBoundary } from "../components/AsyncBoundary";
 import { SeverityBadge } from "../components/SeverityBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { AiAssistancePanel } from "../components/AiAssistancePanel";
 import { useAnnounce } from "../components/Announcer";
 import { useAuth } from "../auth/AuthProvider";
 import { hasAnyRole, hasRole } from "../lib/roles";
@@ -257,6 +258,12 @@ export function IncidentDetail() {
                 )}
               </AsyncBoundary>
             </section>
+
+            <AiAssistancePanel
+              incidentId={id!}
+              canRequest={canWrite}
+              onIncidentChanged={incidentState.refetch}
+            />
 
             {canReadAudit && (
               <section aria-labelledby="audit-heading">

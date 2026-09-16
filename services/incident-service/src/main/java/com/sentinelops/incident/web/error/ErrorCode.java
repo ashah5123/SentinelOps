@@ -14,6 +14,8 @@ public final class ErrorCode {
   public static final String AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED";
   public static final String ACCESS_DENIED = "ACCESS_DENIED";
   public static final String DEAD_LETTER_TOPIC_NOT_ELIGIBLE = "DEAD_LETTER_TOPIC_NOT_ELIGIBLE";
+  public static final String AI_SUGGESTION_NOT_FOUND = "AI_SUGGESTION_NOT_FOUND";
+  public static final String AI_RATE_LIMITED = "AI_RATE_LIMITED";
 
   private ErrorCode() {}
 }

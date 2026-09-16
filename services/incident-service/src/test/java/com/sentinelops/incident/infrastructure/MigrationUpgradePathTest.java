@@ -64,12 +64,12 @@ class MigrationUpgradePathTest {
    * migration (V8). Update this alongside adding a new highest-numbered migration, so this test
    * keeps exercising "the current previous schema -> current schema" rather than a stale pair.
    */
-  private static final String PREVIOUS_SCHEMA_VERSION = "7";
+  private static final String PREVIOUS_SCHEMA_VERSION = "8";
 
   private Flyway flywayTargetingSchemaVersion(String target) {
     return Flyway.configure()
         .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-        .schemas("incidents", "audit")
+        .schemas("incidents", "audit", "runbooks")
         .defaultSchema("incidents")
         .locations("classpath:db/migration")
         .target(target)
@@ -114,15 +114,15 @@ class MigrationUpgradePathTest {
       appConn.commit();
     }
 
-    // 3. Upgrade through the migration path to the current latest version (V8).
+    // 3. Upgrade through the migration path to the current latest version (V9).
     Flyway toLatest =
         flywayTargetingSchemaVersion(org.flywaydb.core.api.MigrationVersion.LATEST.getVersion());
     toLatest.migrate();
     assertThat(toLatest.info().current()).isNotNull();
 
     // 4. Verify the application (as its own non-superuser role) can still read the data inserted
-    // under the previous schema, and can write through the column the new migration introduced
-    // (assignee_id, added by V8) without any special-casing.
+    // under the previous schema, and can write through the tables the new migration introduced
+    // (runbooks.runbook_documents/runbook_chunks, added by V9) without any special-casing.
     try (Connection appConn = appConnection()) {
       try (Statement stmt = appConn.createStatement();
           ResultSet rs =
@@ -147,22 +147,49 @@ class MigrationUpgradePathTest {
             .isEqualTo(1);
       }
 
+      UUID documentId = UUID.randomUUID();
+      String dummyVector = zeroVectorWithOneAt(384, 7);
       try (Statement stmt = appConn.createStatement()) {
         stmt.execute(
-            "UPDATE incidents.incidents SET assignee_id = 'responder-demo' WHERE id = '"
-                + incidentId
-                + "'");
+            "INSERT INTO runbooks.runbook_documents (id, slug, title, version, content_hash, "
+                + "source_path, owner, last_reviewed_at, created_at, updated_at) VALUES ('"
+                + documentId
+                + "', 'migration-upgrade-test-runbook', 'Migration upgrade test runbook', 1, "
+                + "'deadbeef', 'docs/runbooks/migration-test.md', 'platform-team', '2026-01-01', "
+                + "now(), now())");
+        stmt.execute(
+            "INSERT INTO runbooks.runbook_chunks (id, document_id, stable_chunk_id, chunk_index, "
+                + "heading, content, token_count, embedding, is_active, created_at) VALUES "
+                + "(gen_random_uuid(), '"
+                + documentId
+                + "', 'migration-upgrade-test-chunk-0', 0, 'Symptoms', 'dummy chunk content', 3, '"
+                + dummyVector
+                + "', true, now())");
       }
       try (Statement stmt = appConn.createStatement();
           ResultSet rs =
               stmt.executeQuery(
-                  "SELECT assignee_id FROM incidents.incidents WHERE id = '" + incidentId + "'")) {
+                  "SELECT count(*) FROM runbooks.runbook_chunks WHERE document_id = '"
+                      + documentId
+                      + "' AND is_active = true")) {
         rs.next();
-        assertThat(rs.getString("assignee_id"))
-            .as("the application can write through the column the new migration introduced")
-            .isEqualTo("responder-demo");
+        assertThat(rs.getInt(1))
+            .as("the application can write through the tables the new migration introduced")
+            .isEqualTo(1);
       }
     }
+  }
+
+  /** A 384-dimension pgvector literal (e.g. "[0,0,1,0,...]") with a single 1 at the given index. */
+  private String zeroVectorWithOneAt(int dimensions, int oneIndex) {
+    StringBuilder sb = new StringBuilder("[");
+    for (int i = 0; i < dimensions; i++) {
+      sb.append(i == oneIndex ? "1" : "0");
+      if (i < dimensions - 1) {
+        sb.append(",");
+      }
+    }
+    return sb.append("]").toString();
   }
 
   private String highestAppliedVersion(Flyway flyway) {

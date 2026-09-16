@@ -160,6 +160,11 @@ public class Incident {
     this.assigneeId = assigneeId;
   }
 
+  /** Changes this incident's severity. Independent of lifecycle status. */
+  public void changeSeverity(IncidentSeverity newSeverity) {
+    this.severity = Objects.requireNonNull(newSeverity, "newSeverity");
+  }
+
   @PrePersist
   void onCreate() {
     Instant now = Instant.now();

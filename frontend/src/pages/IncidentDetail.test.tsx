@@ -52,6 +52,12 @@ vi.mock("../api/incidents", () => ({
   assignIncident: () => Promise.resolve(sampleIncident),
 }));
 
+vi.mock("../api/ai", () => ({
+  listAiSuggestions: () => Promise.resolve([]),
+  generateAiSuggestion: () => Promise.resolve(),
+  reviewAiSuggestion: () => Promise.resolve(),
+}));
+
 describe("IncidentDetail", () => {
   it("prevents a duplicate submission while a transition is still pending", async () => {
     mockUseAuth.mockReturnValue({ roles: ["RESPONDER"] });

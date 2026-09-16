@@ -27,6 +27,7 @@
     <jacoco.version>0.8.12</jacoco.version>
     <otel.instrumentation.version>2.10.0-alpha</otel.instrumentation.version>
     <datasource-micrometer.version>1.0.5</datasource-micrometer.version>
+    <pgvector.version>0.1.6</pgvector.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -88,7 +89,19 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <scope>runtime</scope>
+      <!-- Widened from "runtime" to compile scope in Phase 11: com.pgvector:pgvector's PGvector
+           class implements this driver's PGBinaryObject interface, so code that constructs a
+           PGvector (see PgVectorRunbookRepository) needs it resolvable at compile time too. -->
+    </dependency>
+    <!-- Phase 11: the official, minimal JDBC helper for PostgreSQL's pgvector extension (a
+         single small class binding a float[] to the native `vector` column type) — the standard
+         way to use pgvector from plain JDBC, since Hibernate/JPA has no built-in vector type.
+         Runbook retrieval itself uses JdbcTemplate/native SQL, not JPA entity mapping, for exactly
+         this reason (see retrieval/PgVectorRunbookRetriever.java). -->
+    <dependency>
+      <groupId>com.pgvector</groupId>
+      <artifactId>pgvector</artifactId>
+      <version>${pgvector.version}</version>
     </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>

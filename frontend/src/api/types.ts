@@ -104,6 +104,49 @@ export interface ProblemDetail {
   to?: string;
 }
 
+// Phase 11: AI-assisted triage. Mirrors incidents.ai_suggestions / AiSuggestionResponse exactly —
+// never authoritative, never mutates an incident, see docs/development/ai-triage.md.
+export type AiSuggestionStatus = "COMPLETED" | "FAILED" | "MODEL_UNAVAILABLE";
+export type AiReviewStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "PARTIAL";
+
+export interface AiCitation {
+  chunkId: string;
+  sourceTitle: string;
+  section: string;
+  score: number;
+}
+
+/** The parsed form of AiSuggestion.structuredResult (only present when status is COMPLETED). */
+export interface AiTriageResult {
+  summary: string;
+  suggestedCategory: string;
+  suggestedSeverity: IncidentSeverity;
+  confidenceStatement: string;
+  evidence: string[];
+  diagnosticSteps: string[];
+  escalationConditions: string[];
+  citations: AiCitation[];
+  limitations: string[];
+}
+
+export interface AiSuggestion {
+  id: string;
+  incidentId: string;
+  providerName: string;
+  modelName: string;
+  status: AiSuggestionStatus;
+  structuredResult: string | null;
+  suggestedSeverity: string | null;
+  suggestedCategory: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  reviewStatus: AiReviewStatus;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  acceptedFields: string | null;
+  reviewFeedback: string | null;
+}
+
 export interface IncidentQueryParams {
   status?: IncidentStatus;
   severity?: IncidentSeverity;
