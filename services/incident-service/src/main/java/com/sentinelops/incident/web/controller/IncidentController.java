@@ -5,11 +5,11 @@ import com.sentinelops.incident.application.IdempotencyGuard;
 import com.sentinelops.incident.application.IncidentCommandService;
 import com.sentinelops.incident.application.IncidentFilter;
 import com.sentinelops.incident.application.IncidentQueryService;
-import com.sentinelops.incident.domain.ActorType;
 import com.sentinelops.incident.domain.Incident;
 import com.sentinelops.incident.domain.IncidentEvidence;
 import com.sentinelops.incident.domain.IncidentSeverity;
 import com.sentinelops.incident.domain.IncidentStatus;
+import com.sentinelops.incident.security.AuthenticatedActor;
 import com.sentinelops.incident.web.dto.AuditEventResponse;
 import com.sentinelops.incident.web.dto.CreateIncidentRequest;
 import com.sentinelops.incident.web.dto.EvidenceRequest;
@@ -34,6 +34,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,28 +47,37 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Incident-management REST API.
  *
- * <p><b>Local-development security boundary:</b> this phase implements no authentication or
- * authorization. Every endpoint here is reachable by anyone who can reach the port it is bound to.
- * It is bound to {@code 127.0.0.1} only in the Compose environment and must never be exposed on a
- * public or shared network. See {@code services/incident-service/README.md}.
+ * <p><b>Authentication and authorization (Phase 7):</b> every endpoint requires a valid OAuth2
+ * bearer token issued by the configured Keycloak realm; unauthenticated requests receive 401.
+ * Endpoints are further restricted by role — see the role-permission matrix in {@code
+ * services/incident-service/README.md} — and authenticated-but-unauthorized requests receive 403.
+ * The acting user's identity always comes from the validated token's {@code sub} claim (see {@link
+ * AuthenticatedActor}), never from a request field, so a caller cannot impersonate another user or
+ * grant itself a role it was not issued.
  */
 @RestController
 @RequestMapping("/api/v1/incidents")
 public class IncidentController {
 
   private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+  private static final String READ_ROLES = "hasAnyRole('VIEWER','RESPONDER','ADMIN')";
+  private static final String WRITE_ROLES = "hasAnyRole('RESPONDER','ADMIN')";
+  private static final String ADMIN_ROLE = "hasRole('ADMIN')";
 
   private final IncidentCommandService commandService;
   private final IncidentQueryService queryService;
   private final IdempotencyGuard idempotencyGuard;
+  private final AuthenticatedActor authenticatedActor;
 
   public IncidentController(
       IncidentCommandService commandService,
       IncidentQueryService queryService,
-      IdempotencyGuard idempotencyGuard) {
+      IdempotencyGuard idempotencyGuard,
+      AuthenticatedActor authenticatedActor) {
     this.commandService = commandService;
     this.queryService = queryService;
     this.idempotencyGuard = idempotencyGuard;
+    this.authenticatedActor = authenticatedActor;
   }
 
   @Operation(
@@ -75,7 +85,8 @@ public class IncidentController {
       description =
           "Requires an Idempotency-Key header. Repeating the same key with an identical "
               + "payload returns the original response; reusing it with a different payload "
-              + "is rejected with 409.")
+              + "is rejected with 409. Requires the RESPONDER or ADMIN role.")
+  @PreAuthorize(WRITE_ROLES)
   @PostMapping
   public ResponseEntity<IncidentResponse> createIncident(
       @RequestHeader(name = IDEMPOTENCY_KEY_HEADER, required = false) String idempotencyKey,
@@ -85,6 +96,7 @@ public class IncidentController {
       throw new MissingIdempotencyKeyException();
     }
     String correlationId = CorrelationIdFilter.currentOrGenerate(servletRequest);
+    String actorId = authenticatedActor.currentActorId();
 
     IdempotencyGuard.Outcome<IncidentResponse> outcome =
         idempotencyGuard.execute(
@@ -103,8 +115,8 @@ public class IncidentController {
                           request.detectedAt(),
                           correlationId,
                           null,
-                          ActorType.LOCAL_USER,
-                          "local-operator"));
+                          authenticatedActor.actorType(),
+                          actorId));
               return IncidentResponse.from(incident);
             },
             IncidentResponse.class);
@@ -115,6 +127,7 @@ public class IncidentController {
   }
 
   @Operation(summary = "List incidents with optional filtering, sorting, and pagination")
+  @PreAuthorize(READ_ROLES)
   @GetMapping
   public PageResponse<IncidentResponse> listIncidents(
       @Parameter(description = "Filter by status") @RequestParam(required = false)
@@ -145,6 +158,7 @@ public class IncidentController {
   }
 
   @Operation(summary = "Get a single incident by ID")
+  @PreAuthorize(READ_ROLES)
   @GetMapping("/{id}")
   public IncidentResponse getIncident(@PathVariable UUID id) {
     return IncidentResponse.from(queryService.getOrThrow(id));
@@ -153,7 +167,9 @@ public class IncidentController {
   @Operation(
       summary = "Transition an incident to a new status",
       description =
-          "Only transitions allowed by the incident lifecycle are accepted; others return 409.")
+          "Only transitions allowed by the incident lifecycle are accepted; others return 409. "
+              + "Requires the RESPONDER or ADMIN role.")
+  @PreAuthorize(WRITE_ROLES)
   @PostMapping("/{id}/transitions")
   public IncidentResponse transition(
       @PathVariable UUID id,
@@ -161,11 +177,19 @@ public class IncidentController {
       HttpServletRequest servletRequest) {
     String correlationId = CorrelationIdFilter.currentOrGenerate(servletRequest);
     Incident incident =
-        commandService.transition(id, request.status(), request.reason(), correlationId);
+        commandService.transition(
+            id,
+            request.status(),
+            request.reason(),
+            correlationId,
+            authenticatedActor.currentActorId());
     return IncidentResponse.from(incident);
   }
 
-  @Operation(summary = "Record a piece of evidence against an incident")
+  @Operation(
+      summary = "Record a piece of evidence against an incident",
+      description = "Requires the RESPONDER or ADMIN role.")
+  @PreAuthorize(WRITE_ROLES)
   @PostMapping("/{id}/evidence")
   public ResponseEntity<EvidenceResponse> addEvidence(
       @PathVariable UUID id,
@@ -178,18 +202,23 @@ public class IncidentController {
             request.evidenceType(),
             request.description(),
             request.sourceReference(),
-            correlationId);
+            correlationId,
+            authenticatedActor.currentActorId());
     return ResponseEntity.status(HttpStatus.CREATED).body(EvidenceResponse.from(evidence));
   }
 
   @Operation(
       summary = "Get the time-ordered timeline of status transitions and evidence for an incident")
+  @PreAuthorize(READ_ROLES)
   @GetMapping("/{id}/timeline")
   public List<TimelineEntryResponse> getTimeline(@PathVariable UUID id) {
     return queryService.getTimeline(id).stream().map(TimelineEntryResponse::from).toList();
   }
 
-  @Operation(summary = "Get the paginated audit trail for an incident")
+  @Operation(
+      summary = "Get the paginated audit trail for an incident",
+      description = "Operational audit records; requires the ADMIN role.")
+  @PreAuthorize(ADMIN_ROLE)
   @GetMapping("/{id}/audit-events")
   public PageResponse<AuditEventResponse> getAuditEvents(
       @PathVariable UUID id,

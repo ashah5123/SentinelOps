@@ -1,0 +1,161 @@
+name: CI
+
+# No CI pipeline existed in this repository before Phase 7; this is added specifically so the new
+# authentication/authorization/audit-logging tests (and every pre-existing test) run automatically
+# on every change, rather than relying solely on local `make`/`mvnw` runs. GitHub-hosted runners
+# provide Docker, so the Testcontainers- and local-Keycloak-backed integration tests run here even
+# though they could not be executed in the environment this phase was authored in.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      extended_scenario:
+        description: "Phase 8 opt-in extended benchmark scenario to run (leave default to skip)"
+        type: choice
+        default: none
+        options:
+          - none
+          - paginated-reads
+          - incident-creation
+          - lifecycle-transitions
+          - mixed-workload
+          - burst-recovery
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Repository validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: make validate
+        run: make validate
+
+  incident-service:
+    name: incident-service build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: services/incident-service/pom.xml
+      - name: mvnw verify (unit, security, and Testcontainers/Keycloak integration tests)
+        working-directory: services/incident-service
+        run: ./mvnw -B verify
+
+  telemetry-correlation-service:
+    name: telemetry-correlation-service build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: services/telemetry-correlation-service/pom.xml
+      - name: mvnw verify
+        working-directory: services/telemetry-correlation-service
+        run: ./mvnw -B verify
+
+  compose-config:
+    name: Docker Compose configuration check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare a throwaway .env
+        run: cp .env.example .env
+      - name: docker compose config
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile console --profile app --profile observability --profile benchmark \
+            config --quiet
+
+  # Phase 8: a short, bounded functional smoke benchmark (single VU, ~30s, see
+  # infrastructure/docker/k6/scenarios/smoke.js) runs on every push/PR — it is cheap and catches
+  # real regressions in the authenticated request path end to end. Heavier load scenarios
+  # (baseline/mixed/burst) deliberately stay opt-in (workflow_dispatch only, see the
+  # extended-benchmark job below) rather than gating every PR on a shared runner's timing, which
+  # has not been shown stable enough here to justify a strict latency gate.
+  benchmark-smoke:
+    name: Phase 8 benchmark smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: cp .env.example .env
+      - name: Start the app profile
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from minio-bucket-init minio-bucket-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: Run the smoke benchmark
+        run: bash infrastructure/docker/scripts/benchmark-run.sh smoke
+      - name: Show incident-service logs on failure
+        if: failure()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app logs incident-service keycloak --tail=200
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes
+
+  # Opt-in only: triggered manually (workflow_dispatch) with a chosen scenario. Never runs on a
+  # normal push/PR, so it never blocks a merge on shared-runner performance variability.
+  benchmark-extended:
+    name: Phase 8 extended benchmark (opt-in)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.extended_scenario != 'none'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: cp .env.example .env
+      - name: Start the app profile
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from minio-bucket-init minio-bucket-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: Seed benchmark data (read scenarios only)
+        if: contains(fromJSON('["paginated-reads", "mixed-workload"]'), github.event.inputs.extended_scenario)
+        run: bash infrastructure/docker/scripts/benchmark-seed.sh ci-run 50 42
+      - name: "Run the chosen scenario (bounded: 15 VUs, 30s)"
+        env:
+          BENCHMARK_VUS: "15"
+          BENCHMARK_DURATION: "30s"
+          BENCHMARK_RAMP: "5s"
+          BENCHMARK_RUN_ID: "ci-run"
+        run: bash infrastructure/docker/scripts/benchmark-run.sh "${{ github.event.inputs.extended_scenario }}"
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.event.inputs.extended_scenario }}
+          path: infrastructure/docker/k6/results/
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes

@@ -1,6 +1,7 @@
 # incident-service
 
-SentinelOps's incident-management control-plane service (Phase 3). Java 21, Spring Boot.
+SentinelOps's incident-management control-plane service (Phase 3, hardened in Phase 6, with
+authentication/authorization/audit logging added in Phase 7). Java 21, Spring Boot.
 
 ## Responsibilities
 
@@ -8,21 +9,53 @@ SentinelOps's incident-management control-plane service (Phase 3). Java 21, Spri
 - Provide a REST API to create incidents, transition them through their lifecycle, record
   evidence, and query timelines and audit trails.
 - Enforce valid incident-state transitions; reject illegal ones with a clear domain error.
-- Record an immutable audit trail of every meaningful action.
+- Authenticate every request against a local Keycloak realm and enforce role-based authorization
+  (`VIEWER`/`RESPONDER`/`ADMIN`) — see "Authentication and authorization" below.
+- Record an immutable, admin-queryable audit trail of every meaningful action, including denied
+  authorization attempts.
 - Publish versioned events (`incident.detected.v1`, `audit.event.v1`) through a transactional
   outbox — see [ADR 0007](../../docs/decisions/0007-transactional-outbox-pattern.md).
 - Expose health, readiness, and liveness information for operational tooling.
 
-Not implemented in this phase: authentication/authorization, the frontend, the AI
-investigator, Kubernetes deployment, and the full observability stack (metrics/traces/logs are
-emitted in a form future OpenTelemetry integration can build on, but no collector/backend is
-wired up yet).
+Not implemented yet: the frontend, the AI investigator, Kubernetes deployment, and the full
+observability stack (metrics/traces/logs are emitted in a form future OpenTelemetry integration
+can build on, but no collector/backend is wired up yet).
 
 ## ⚠️ Local-development security boundary
 
-This service has no authentication or authorization. It must only ever run bound to
-`127.0.0.1` (the default in `infrastructure/docker/docker-compose.yml`) and must never be
-exposed on a public or shared network. See `docs/api/incident-service.md`.
+Every endpoint requires a valid Keycloak-issued OAuth2 bearer token, and role-based authorization
+is enforced server-side (see below) — but this is still a **local-development** deployment: HTTP
+only (no TLS termination anywhere in the local stack), synthetic demo credentials, and no rate
+limiting. It must only ever run bound to `127.0.0.1` (the default in
+`infrastructure/docker/docker-compose.yml`) and must never be exposed on a public or shared
+network. See `docs/development/security.md` for the full threat model, local setup, and example
+requests.
+
+## Authentication and authorization (Phase 7)
+
+OAuth 2.0 / OIDC via a local Keycloak realm; see
+[`docs/development/security.md`](../../docs/development/security.md) for setup, example
+authenticated requests, the issuer/JWKS local-Docker note, CSRF/CORS rationale, and
+troubleshooting 401/403. Role assignment lives entirely in Keycloak; the acting user's identity
+always comes from the validated token's `sub` claim, never from a request field.
+
+### Role-permission matrix
+
+| Action                                                        | VIEWER | RESPONDER | ADMIN |
+|-----------------------------------------------------------------|:------:|:---------:|:-----:|
+| `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}`            |   ✅   |    ✅     |  ✅   |
+| `GET /api/v1/incidents/{id}/timeline`                            |   ✅   |    ✅     |  ✅   |
+| `POST /api/v1/incidents` (create)                                |   ❌   |    ✅     |  ✅   |
+| `POST /api/v1/incidents/{id}/transitions`                        |   ❌   |    ✅     |  ✅   |
+| `POST /api/v1/incidents/{id}/evidence`                           |   ❌   |    ✅     |  ✅   |
+| `GET /api/v1/incidents/{id}/audit-events` (per-incident audit)   |   ❌   |    ❌     |  ✅   |
+| `GET /api/v1/admin/audit-events` (global audit search)           |   ❌   |    ❌     |  ✅   |
+| `POST /api/v1/admin/dead-letter-topics/{topic}/replay`           |   ❌   |    ❌     |  ✅   |
+| User/role administration                                          | *(Keycloak only — this service has no endpoint for it)* |
+
+Unauthenticated requests receive `401` (`errorCode: AUTHENTICATION_REQUIRED`); authenticated
+requests lacking the required role receive `403` (`errorCode: ACCESS_DENIED`) and are recorded in
+the audit trail.
 
 ## Domain lifecycle
 
@@ -142,7 +175,17 @@ and an operational runbook: [`docs/development/reliability.md`](../../docs/devel
 
 ## Known limitations
 
-- No authentication/authorization (see security boundary notice above).
+- Authentication/authorization is enforced, but this is still a local-development deployment
+  (HTTP only, synthetic demo credentials, no rate limiting) — see the security boundary notice
+  above and `docs/development/security.md`'s threat model.
+- The audit trail is application-enforced append-only, not tamper-proof (no database-level
+  immutability grant, no automated retention job yet) — see `docs/development/security.md`.
+- The Resource Owner Password Credentials grant used in the documented API workflow is a
+  local/demo-only convenience appropriate because no frontend exists yet; it is not how a real
+  client application should authenticate against a non-local Keycloak deployment.
+- Dead-letter replay (`POST /api/v1/admin/dead-letter-topics/{topic}/replay`) is bounded to the
+  two dead-letter topics this service itself consumes from, and replays at most one bounded batch
+  per call rather than draining a topic unboundedly.
 - Incident numbers (`INC-<year>-<sequence>`) are a display convenience, not a strict gapless
   sequence, under concurrent creation — see `IncidentNumberGenerator`.
 - Delivery is at-least-once, not exactly-once, for both consumed and published events.

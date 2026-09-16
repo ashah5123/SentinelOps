@@ -1,13 +1,14 @@
 package com.sentinelops.incident;
 
 import com.sentinelops.incident.config.IncidentServiceProperties;
+import com.sentinelops.incident.security.SecurityProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@EnableConfigurationProperties(IncidentServiceProperties.class)
+@EnableConfigurationProperties({IncidentServiceProperties.class, SecurityProperties.class})
 @EnableScheduling
 public class IncidentServiceApplication {
 

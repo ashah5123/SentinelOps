@@ -30,6 +30,13 @@ scrape_configs:
 
   - job_name: incident-service
     metrics_path: /actuator/prometheus
+    # incident-service (Phase 7) requires authentication even for its metrics endpoint. Prometheus
+    # does not support environment-variable substitution in this file, so these must be kept in
+    # sync by hand with ACTUATOR_METRICS_USERNAME/PASSWORD in .env if you change them from the
+    # .env.example defaults — see docs/development/security.md.
+    basic_auth:
+      username: metrics
+      password: change-me-local-dev-only
     static_configs:
       - targets: ["incident-service:8081"]
         labels:

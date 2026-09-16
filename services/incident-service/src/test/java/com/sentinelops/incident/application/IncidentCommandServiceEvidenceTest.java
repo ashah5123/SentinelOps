@@ -101,15 +101,16 @@ class IncidentCommandServiceEvidenceTest {
   }
 
   @Test
-  void addEvidenceAttributesToLocalOperator() {
-    commandService.addEvidence(incidentId, "LOG", "Manually recorded evidence", "ref", "corr-3");
+  void addEvidenceAttributesToAuthenticatedActor() {
+    commandService.addEvidence(
+        incidentId, "LOG", "Manually recorded evidence", "ref", "corr-3", "operator-sub-123");
 
     verify(auditRecorder)
         .record(
             eq(incidentId),
             eq("EVIDENCE_RECORDED"),
             eq(ActorType.LOCAL_USER),
-            eq("local-operator"),
+            eq("operator-sub-123"),
             eq("corr-3"),
             any(Map.class));
   }

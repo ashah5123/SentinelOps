@@ -1,9 +1,14 @@
 package com.sentinelops.incident.web.error;
 
+import com.sentinelops.incident.application.DeadLetterReplayService.IneligibleDeadLetterTopicException;
 import com.sentinelops.incident.application.IdempotencyConflictException;
 import com.sentinelops.incident.application.IncidentNotFoundException;
 import com.sentinelops.incident.domain.IllegalIncidentTransitionException;
+import com.sentinelops.incident.security.RestAccessDeniedHandler;
+import com.sentinelops.incident.security.RestAuthenticationEntryPoint;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.net.URI;
 import java.time.Instant;
 import org.slf4j.Logger;
@@ -13,6 +18,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -35,6 +42,37 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
   private static final URI ERROR_TYPE_BASE = URI.create("https://sentinelops.dev/errors/");
 
+  private final RestAccessDeniedHandler accessDeniedHandler;
+  private final RestAuthenticationEntryPoint authenticationEntryPoint;
+
+  public GlobalExceptionHandler(
+      RestAccessDeniedHandler accessDeniedHandler,
+      RestAuthenticationEntryPoint authenticationEntryPoint) {
+    this.accessDeniedHandler = accessDeniedHandler;
+    this.authenticationEntryPoint = authenticationEntryPoint;
+  }
+
+  /**
+   * A {@code @PreAuthorize} denial thrown from inside a controller/service method is caught here
+   * (by Spring MVC's normal exception-handling path) rather than by Spring Security's
+   * ExceptionTranslationFilter, since it occurs after the DispatcherServlet has already taken over.
+   * Delegating to the same handler used at the filter level keeps the response body and the audit
+   * trail identical regardless of where the denial originated.
+   */
+  @ExceptionHandler(AccessDeniedException.class)
+  public void handleAccessDenied(
+      AccessDeniedException e, HttpServletRequest request, HttpServletResponse response)
+      throws IOException {
+    accessDeniedHandler.handle(request, response, e);
+  }
+
+  @ExceptionHandler(AuthenticationException.class)
+  public void handleAuthenticationException(
+      AuthenticationException e, HttpServletRequest request, HttpServletResponse response)
+      throws IOException {
+    authenticationEntryPoint.commence(request, response, e);
+  }
+
   @ExceptionHandler(IncidentNotFoundException.class)
   public ProblemDetail handleNotFound(IncidentNotFoundException e, HttpServletRequest request) {
     return build(HttpStatus.NOT_FOUND, ErrorCode.INCIDENT_NOT_FOUND, e.getMessage(), request);
@@ -48,6 +86,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     problem.setProperty("from", e.from().name());
     problem.setProperty("to", e.to().name());
     return problem;
+  }
+
+  @ExceptionHandler(IneligibleDeadLetterTopicException.class)
+  public ProblemDetail handleIneligibleDeadLetterTopic(
+      IneligibleDeadLetterTopicException e, HttpServletRequest request) {
+    return build(
+        HttpStatus.BAD_REQUEST, ErrorCode.DEAD_LETTER_TOPIC_NOT_ELIGIBLE, e.getMessage(), request);
   }
 
   @ExceptionHandler(IdempotencyConflictException.class)

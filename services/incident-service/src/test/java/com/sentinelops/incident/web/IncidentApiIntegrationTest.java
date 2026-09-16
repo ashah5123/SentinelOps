@@ -39,12 +39,16 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
   }
 
   private HttpHeaders jsonHeadersWithIdempotencyKey(String key) {
-    HttpHeaders headers = new HttpHeaders();
+    HttpHeaders headers = bearerHeaders("RESPONDER");
     headers.setContentType(MediaType.APPLICATION_JSON);
     if (key != null) {
       headers.set("Idempotency-Key", key);
     }
     return headers;
+  }
+
+  private HttpEntity<Void> authOnly() {
+    return new HttpEntity<>(bearerHeaders("RESPONDER"));
   }
 
   @Test
@@ -65,8 +69,11 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
     assertThat(response.getHeaders().getFirst("X-Correlation-ID")).isNotBlank();
 
     ResponseEntity<IncidentResponse> fetched =
-        restTemplate.getForEntity(
-            "/api/v1/incidents/" + response.getBody().id(), IncidentResponse.class);
+        restTemplate.exchange(
+            "/api/v1/incidents/" + response.getBody().id(),
+            HttpMethod.GET,
+            authOnly(),
+            IncidentResponse.class);
     assertThat(fetched.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(fetched.getBody().title()).isEqualTo("Persisted incident");
   }
@@ -138,7 +145,7 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
         restTemplate.exchange(
             "/api/v1/incidents/" + UUID.randomUUID(),
             HttpMethod.GET,
-            HttpEntity.EMPTY,
+            authOnly(),
             ProblemDetail.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -149,7 +156,7 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
   void malformedUuidInPathReturnsBadRequest() {
     ResponseEntity<ProblemDetail> response =
         restTemplate.exchange(
-            "/api/v1/incidents/not-a-uuid", HttpMethod.GET, HttpEntity.EMPTY, ProblemDetail.class);
+            "/api/v1/incidents/not-a-uuid", HttpMethod.GET, authOnly(), ProblemDetail.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
   }
@@ -204,8 +211,10 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
     createIncidentWithService("Filter target 2", "unique-filter-service");
 
     ResponseEntity<PageResponse> response =
-        restTemplate.getForEntity(
+        restTemplate.exchange(
             "/api/v1/incidents?affectedService=unique-filter-service&severity=SEV2&page=0&size=10",
+            HttpMethod.GET,
+            authOnly(),
             PageResponse.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -227,7 +236,11 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
     assertThat(evidenceResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
     ResponseEntity<List> timeline =
-        restTemplate.getForEntity("/api/v1/incidents/" + created.id() + "/timeline", List.class);
+        restTemplate.exchange(
+            "/api/v1/incidents/" + created.id() + "/timeline",
+            HttpMethod.GET,
+            authOnly(),
+            List.class);
     assertThat(timeline.getBody()).hasSizeGreaterThanOrEqualTo(2); // DETECTED entry + evidence
   }
 
@@ -236,8 +249,11 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
     IncidentResponse created = createIncident("Audit target");
 
     ResponseEntity<PageResponse> auditEvents =
-        restTemplate.getForEntity(
-            "/api/v1/incidents/" + created.id() + "/audit-events", PageResponse.class);
+        restTemplate.exchange(
+            "/api/v1/incidents/" + created.id() + "/audit-events",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders("ADMIN")),
+            PageResponse.class);
 
     assertThat(auditEvents.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(auditEvents.getBody().totalElements()).isGreaterThanOrEqualTo(1);
@@ -245,7 +261,8 @@ class IncidentApiIntegrationTest extends AbstractIntegrationTest {
 
   @Test
   void openApiDocumentIsAvailable() {
-    ResponseEntity<String> response = restTemplate.getForEntity("/v3/api-docs", String.class);
+    ResponseEntity<String> response =
+        restTemplate.exchange("/v3/api-docs", HttpMethod.GET, authOnly(), String.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).contains("\"/api/v1/incidents\"");
   }

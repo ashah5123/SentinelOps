@@ -131,7 +131,11 @@ public class IncidentCommandService {
 
   @Transactional
   public Incident transition(
-      UUID incidentId, IncidentStatus newStatus, String reason, String correlationId) {
+      UUID incidentId,
+      IncidentStatus newStatus,
+      String reason,
+      String correlationId,
+      String actorId) {
     return spans.inSpan(
         "incident.transition",
         Map.of("to_status", newStatus.name()),
@@ -150,7 +154,7 @@ public class IncidentCommandService {
               incidentId,
               "INCIDENT_TRANSITIONED",
               ActorType.LOCAL_USER,
-              "local-operator",
+              actorId,
               correlationId,
               Map.of("from", previousStatus.name(), "to", newStatus.name()));
 
@@ -165,7 +169,8 @@ public class IncidentCommandService {
       String evidenceType,
       String description,
       String sourceReference,
-      String correlationId) {
+      String correlationId,
+      String actorId) {
     return recordEvidence(
         incidentId,
         evidenceType,
@@ -173,7 +178,7 @@ public class IncidentCommandService {
         sourceReference,
         correlationId,
         ActorType.LOCAL_USER,
-        "local-operator");
+        actorId);
   }
 
   /**

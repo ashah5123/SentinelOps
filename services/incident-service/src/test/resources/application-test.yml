@@ -9,6 +9,15 @@ spring:
     default-schema: incidents
 
 sentinelops:
+  security:
+    # issuer and spring.security.oauth2.resourceserver.jwt.jwk-set-uri are overridden per-test via
+    # @DynamicPropertySource once the Keycloak Testcontainer is up (see AbstractIntegrationTest).
+    issuer: http://placeholder-overridden-by-dynamicpropertysource
+    audience: sentinelops-incident-api
+    cors-allowed-origins: []
+    metrics:
+      username: metrics-test
+      password: metrics-test-password
   incident-service:
     producer-name: incident-service-test
     max-request-body-bytes: 1048576

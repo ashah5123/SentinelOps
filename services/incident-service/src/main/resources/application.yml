@@ -48,8 +48,26 @@ spring:
       observation-enabled: true
     template:
       observation-enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Address to fetch Keycloak's signing keys from (JWKS). Kept separate from the expected
+          # "iss" claim value below — see sentinelops.security.issuer and SecurityConfig#jwtDecoder.
+          jwk-set-uri: ${OAUTH2_JWK_SET_URI:http://localhost:8180/realms/sentinelops/protocol/openid-connect/certs}
 
 sentinelops:
+  security:
+    # The issuer string Keycloak itself embeds in every token (its fixed KC_HOSTNAME) — must match
+    # exactly regardless of which network address was used to fetch the token or its signing keys.
+    issuer: ${OAUTH2_ISSUER_URI:http://localhost:8180/realms/sentinelops}
+    # Must match the audience ("aud" claim) the Keycloak client's audience mapper adds to every
+    # access token it issues for this API — see infrastructure/docker/keycloak/realm-export.json.
+    audience: ${OAUTH2_AUDIENCE:sentinelops-incident-api}
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    metrics:
+      username: ${ACTUATOR_METRICS_USERNAME:metrics}
+      password: ${ACTUATOR_METRICS_PASSWORD:change-me-local-dev-only}
   incident-service:
     producer-name: incident-service
     max-request-body-bytes: ${MAX_REQUEST_BODY_BYTES:1048576}

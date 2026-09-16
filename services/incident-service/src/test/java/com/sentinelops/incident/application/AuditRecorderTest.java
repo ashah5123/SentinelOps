@@ -11,6 +11,7 @@ import com.sentinelops.incident.domain.AuditEvent;
 import com.sentinelops.incident.events.AuditEventPayload;
 import com.sentinelops.incident.events.EventTypes;
 import com.sentinelops.incident.infrastructure.persistence.AuditEventRepository;
+import com.sentinelops.incident.observability.SecurityMetrics;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -24,12 +25,14 @@ class AuditRecorderTest {
 
   @Mock private AuditEventRepository auditEventRepository;
   @Mock private OutboxWriter outboxWriter;
+  @Mock private SecurityMetrics securityMetrics;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
   @Test
   void recordsAuditEventAndAppendsCorrespondingOutboxEvent() {
-    AuditRecorder recorder = new AuditRecorder(auditEventRepository, outboxWriter, objectMapper);
+    AuditRecorder recorder =
+        new AuditRecorder(auditEventRepository, outboxWriter, objectMapper, securityMetrics);
     UUID incidentId = UUID.randomUUID();
 
     recorder.record(
@@ -61,7 +64,8 @@ class AuditRecorderTest {
 
   @Test
   void emptyMetadataIsStoredAsNull() {
-    AuditRecorder recorder = new AuditRecorder(auditEventRepository, outboxWriter, objectMapper);
+    AuditRecorder recorder =
+        new AuditRecorder(auditEventRepository, outboxWriter, objectMapper, securityMetrics);
 
     recorder.record(
         null, "SYSTEM_STARTED", ActorType.SYSTEM, "incident-service", "corr-2", Map.of());

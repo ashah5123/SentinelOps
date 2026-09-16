@@ -5,6 +5,7 @@ import com.sentinelops.incident.domain.Incident;
 import com.sentinelops.incident.domain.IncidentEvidence;
 import com.sentinelops.incident.domain.IncidentStatusHistory;
 import com.sentinelops.incident.infrastructure.persistence.AuditEventRepository;
+import com.sentinelops.incident.infrastructure.persistence.AuditEventSpecifications;
 import com.sentinelops.incident.infrastructure.persistence.IncidentEvidenceRepository;
 import com.sentinelops.incident.infrastructure.persistence.IncidentRepository;
 import com.sentinelops.incident.infrastructure.persistence.IncidentSpecifications;
@@ -87,5 +88,17 @@ public class IncidentQueryService {
   public Page<AuditEvent> getAuditEvents(UUID incidentId, Pageable pageable) {
     getOrThrow(incidentId);
     return auditEventRepository.findByIncidentIdOrderByOccurredAtAsc(incidentId, pageable);
+  }
+
+  /** Admin-only, bounded-filter view over the whole append-only audit trail. */
+  public Page<AuditEvent> searchAuditEvents(AuditFilter filter, Pageable pageable) {
+    Specification<AuditEvent> spec =
+        Specification.where(AuditEventSpecifications.actorIdEquals(filter.actorId()))
+            .and(AuditEventSpecifications.actorTypeEquals(filter.actorType()))
+            .and(AuditEventSpecifications.actionEquals(filter.action()))
+            .and(AuditEventSpecifications.incidentIdEquals(filter.incidentId()))
+            .and(AuditEventSpecifications.occurredAtFrom(filter.occurredFrom()))
+            .and(AuditEventSpecifications.occurredAtTo(filter.occurredTo()));
+    return auditEventRepository.findAll(spec, pageable);
   }
 }

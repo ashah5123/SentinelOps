@@ -1,0 +1,105 @@
+{
+  "realm": "sentinelops",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "VIEWER", "description": "Read incidents and incident history." },
+      { "name": "RESPONDER", "description": "Read/create incidents; perform lifecycle transitions." },
+      { "name": "ADMIN", "description": "Responder actions plus audit access and dead-letter replay." }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "sentinelops-api",
+      "name": "SentinelOps incident-service API (demo/local-dev client)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "sentinelops-incident-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "sentinelops-api-short-lived",
+      "name": "Short-lived-token client, used only by the token-expiry test",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "2"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "sentinelops-incident-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "sentinelops-wrong-audience",
+      "name": "Client with no sentinelops-incident-api audience mapper, used only by the wrong-audience test",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "viewer-demo",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "viewer-demo@sentinelops.local",
+      "credentials": [
+        { "type": "password", "value": "viewer-demo-local-only", "temporary": false }
+      ],
+      "realmRoles": ["VIEWER"]
+    },
+    {
+      "username": "responder-demo",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "responder-demo@sentinelops.local",
+      "credentials": [
+        { "type": "password", "value": "responder-demo-local-only", "temporary": false }
+      ],
+      "realmRoles": ["RESPONDER"]
+    },
+    {
+      "username": "admin-demo",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin-demo@sentinelops.local",
+      "credentials": [
+        { "type": "password", "value": "admin-demo-local-only", "temporary": false }
+      ],
+      "realmRoles": ["ADMIN"]
+    }
+  ]
+}

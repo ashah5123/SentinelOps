@@ -11,6 +11,9 @@ public final class ErrorCode {
   public static final String IDEMPOTENCY_KEY_CONFLICT = "IDEMPOTENCY_KEY_CONFLICT";
   public static final String REQUEST_TOO_LARGE = "REQUEST_TOO_LARGE";
   public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
+  public static final String AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED";
+  public static final String ACCESS_DENIED = "ACCESS_DENIED";
+  public static final String DEAD_LETTER_TOPIC_NOT_ELIGIBLE = "DEAD_LETTER_TOPIC_NOT_ELIGIBLE";
 
   private ErrorCode() {}
 }

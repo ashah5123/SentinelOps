@@ -7,10 +7,14 @@ local data/event-streaming platform (Phase 2), an incident-management
 control-plane service (Phase 3), a local observability baseline
 (Phase 4: OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo,
 Alertmanager), a telemetry ingestion and deterministic correlation
-service (Phase 5), and reliability/failure-recovery hardening for both
-Java services (Phase 6). No authentication, Kubernetes, SLO/anomaly
-detection, AI/investigation functionality, frontend, or remediation
-execution are implemented yet. See
+service (Phase 5), reliability/failure-recovery hardening for both
+Java services (Phase 6), authentication/authorization/audit
+logging for the incident service via a local Keycloak realm (Phase 7),
+and a reproducible, local, k6-based performance-benchmarking harness
+for the incident service (Phase 8 — built but not yet executed; see
+below).
+No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
+frontend, or remediation execution are implemented yet. See
 [docs/roadmap.md](docs/roadmap.md) for current phase status, including
 outstanding runtime-verification items.
 
@@ -169,9 +173,12 @@ with acceptance criteria. In summary:
 1. Foundation — repository, architecture, standards. *(complete)*
 2. Local data and event-streaming infrastructure — Compose stack for
    PostgreSQL/pgvector, Redis, Redpanda, and MinIO. *(complete)*
-3. **Incident-management service** (current) — Java/Spring Boot
+3. **Incident-management service** — Java/Spring Boot
    control-plane API, transactional outbox, idempotent anomaly
-   consumption.
+   consumption. Hardened for reliability and, most recently, secured
+   with Keycloak-backed authentication/authorization/audit logging —
+   see [`docs/roadmap.md`](docs/roadmap.md) for the full list of
+   cross-cutting phases applied to this service since.
 4. Detection engine and SLO evaluation.
 5. Investigation agent, retrieval, and root-cause analysis.
 6. Human-approval workflow and remediation recommendations.
@@ -183,6 +190,8 @@ with acceptance criteria. In summary:
 - [System overview](docs/architecture/system-overview.md)
 - [Architecture Decision Records](docs/decisions/)
 - [Local platform reference](docs/development/local-platform.md)
+- [Authentication, authorization, and audit logging](docs/development/security.md)
+- [Performance testing and reproducible benchmarks](docs/development/performance.md)
 - [Incident-service README](services/incident-service/README.md)
 - [Incident-service API reference](docs/api/incident-service.md)
 - [Event contracts](docs/events/event-envelope.md)
@@ -337,16 +346,39 @@ actually been measured versus what remains blocked pending Docker availability. 
 cross-cutting hardening pass, not new user-facing capability — it does not add SLO evaluation,
 anomaly detection, or any other new phase of the roadmap.
 
+## Authentication, authorization, and audit logging (Phase 7)
+
+The incident service now requires a valid OAuth 2.0 bearer token issued by a local Keycloak
+realm on every request, enforces `VIEWER`/`RESPONDER`/`ADMIN` role-based authorization at the
+endpoint and service layer, and records a reliable, admin-queryable, append-only audit trail
+(including authorization denials). The telemetry-correlation service is unaffected by this
+phase — see its own README's security notice. Full setup, the role-permission matrix, example
+authenticated requests, a threat-model summary, and troubleshooting:
+[`docs/development/security.md`](docs/development/security.md).
+
+## Performance testing and reproducible benchmarks (Phase 8)
+
+A k6-based (via its own Docker image — nothing installed locally) load-testing harness for the
+incident service's real endpoints: deterministic synthetic-data seeding with scoped cleanup,
+scenarios for paginated reads/creation/lifecycle transitions/a mixed workload/a bounded burst,
+and an orchestrator that captures the environment and samples existing outbox/HikariCP/JVM
+metrics per run. **Built and statically validated, but not yet executed against a real running
+stack** — see [`docs/benchmarks/phase-8-performance.md`](docs/benchmarks/phase-8-performance.md)
+for exactly why and what remains to run. Full guide:
+[`docs/development/performance.md`](docs/development/performance.md).
+
 ## Project status
 
 **Foundation.** Repository scaffolding, architecture documentation, a
 local data/event-streaming platform (Phase 2), an incident-management
 service (Phase 3), a local observability baseline (Phase 4), a
-telemetry ingestion/correlation service (Phase 5), and reliability/
-failure-recovery hardening (Phase 6) exist.
-No authentication, Kubernetes, SLO/anomaly detection, AI/investigation
-functionality, frontend, or remediation execution described above are
-implemented yet.
+telemetry ingestion/correlation service (Phase 5), reliability/
+failure-recovery hardening (Phase 6), authentication/authorization/
+audit logging for the incident service (Phase 7), and a benchmark
+harness for the incident service (Phase 8 — built, not yet executed)
+exist.
+No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
+frontend, or remediation execution described above are implemented yet.
 
 ## Author
 

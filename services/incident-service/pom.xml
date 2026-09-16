@@ -53,6 +53,13 @@
       <artifactId>spring-kafka</artifactId>
     </dependency>
 
+    <!-- Authentication/authorization (Phase 7): OAuth2 resource server validating Keycloak-issued
+         JWTs; pulls in spring-boot-starter-security for the filter chain and method security. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+
     <!-- Observability (Phase 4): metrics, tracing, structured log export -->
     <dependency>
       <groupId>io.micrometer</groupId>
@@ -103,6 +110,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

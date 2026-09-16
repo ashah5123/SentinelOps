@@ -1,20 +1,25 @@
 # Incident Service API
 
-Status: Foundation. This document describes the REST API implemented in Phase 3. Interactive,
+Status: Phase 3, with authentication/authorization/audit logging added in Phase 7. Interactive,
 always-current documentation is also served by the running service at `/swagger-ui.html`
-(OpenAPI document at `/v3/api-docs`).
+(OpenAPI document at `/v3/api-docs`) — both now require a valid bearer token like every other
+endpoint.
 
 ## ⚠️ Local-development security boundary
 
-This phase implements **no authentication or authorization**. Every endpoint below is
-reachable by anyone who can reach the port it is bound to. In the Compose environment it is
-bound to `127.0.0.1` only — **never expose this API on a public or shared network.**
-Authentication (Keycloak, OAuth 2.0/OIDC/JWT) is planned for a later phase; see
-`docs/roadmap.md`.
+Every endpoint below requires a valid OAuth2 bearer token issued by the local Keycloak realm, and
+role-based authorization (`VIEWER`/`RESPONDER`/`ADMIN`) is enforced server-side — see
+[`docs/development/security.md`](../development/security.md) for setup, the role-permission
+matrix, and example authenticated requests. This is still a local-development deployment: bound
+to `127.0.0.1` only in the Compose environment, HTTP only, synthetic demo credentials —
+**never expose this API on a public or shared network.**
 
 ## Base URL
 
 `http://localhost:8081/api/v1/incidents` (port configurable via `INCIDENT_SERVICE_PORT`).
+
+Every `curl` example below omits `-H "Authorization: Bearer $TOKEN"` for brevity — attach it to
+every request; see `docs/development/security.md` for how to obtain `$TOKEN`.
 
 ## Conventions
 
@@ -106,7 +111,42 @@ Returns the time-ordered list of status transitions and evidence for an incident
 
 ### `GET /api/v1/incidents/{id}/audit-events`
 
-Returns the paginated, immutable audit trail for an incident.
+Returns the paginated, immutable audit trail for an incident. **Requires the `ADMIN` role.**
+
+### `GET /api/v1/admin/audit-events` (ADMIN only)
+
+Searches the global, append-only audit trail. Bounded, optional filters: `actorId`, `actorType`,
+`action`, `incidentId`, `occurredFrom`, `occurredTo`, plus standard pagination (`page`, `size`
+capped at 100, `sort`).
+
+```bash
+curl -s "http://localhost:8081/api/v1/admin/audit-events?action=INCIDENT_CREATED&page=0&size=20" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### `POST /api/v1/admin/dead-letter-topics/{topic}/replay` (ADMIN only)
+
+Replays up to `maxRecords` (default 20, max 100) eligible dead-lettered records from `{topic}`
+back to its original topic, unchanged (same key, value, and event ID — so the target topic's own
+idempotent-consumption check still applies). Only the dead-letter topics this service itself
+consumes from are eligible: `telemetry.anomaly.v1.dlq` and
+`incident.evidence.correlated.v1.dlq`. An ineligible topic returns `400 Bad Request`
+(`errorCode: DEAD_LETTER_TOPIC_NOT_ELIGIBLE`). See
+[`docs/development/reliability.md`](../development/reliability.md) for the underlying dead-letter
+mechanism this endpoint automates.
+
+```bash
+curl -s -X POST "http://localhost:8081/api/v1/admin/dead-letter-topics/telemetry.anomaly.v1.dlq/replay?maxRecords=10" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+## Authentication and authorization errors
+
+Every endpoint returns `401 Unauthorized` (`errorCode: AUTHENTICATION_REQUIRED`) for a missing,
+malformed, expired, or otherwise invalid bearer token, and `403 Forbidden`
+(`errorCode: ACCESS_DENIED`) for an authenticated caller whose role does not permit the action —
+see the role-permission matrix in `services/incident-service/README.md`. Every `403` is also
+recorded in the audit trail.
 
 ## Error format
 
@@ -128,7 +168,8 @@ Every error is a Problem Detail document:
 
 Stable `errorCode` values: `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `INCIDENT_NOT_FOUND`,
 `ILLEGAL_TRANSITION`, `IDEMPOTENCY_KEY_MISSING`, `IDEMPOTENCY_KEY_CONFLICT`,
-`REQUEST_TOO_LARGE`, `INTERNAL_ERROR`.
+`REQUEST_TOO_LARGE`, `INTERNAL_ERROR`, `AUTHENTICATION_REQUIRED`, `ACCESS_DENIED`,
+`DEAD_LETTER_TOPIC_NOT_ELIGIBLE`.
 
 ## Request limits
 

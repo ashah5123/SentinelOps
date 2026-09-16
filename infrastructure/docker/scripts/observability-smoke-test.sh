@@ -154,7 +154,9 @@ else
 fi
 
 # ---- incident-service: exposes expected metrics ----
-METRICS="$(curl -fsS "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/actuator/prometheus" 2>/dev/null)"
+# /actuator/prometheus requires HTTP Basic auth as of Phase 7 (see docs/development/security.md).
+METRICS="$(curl -fsS -u "${ACTUATOR_METRICS_USERNAME:-metrics}:${ACTUATOR_METRICS_PASSWORD:-change-me-local-dev-only}" \
+  "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/actuator/prometheus" 2>/dev/null)"
 MISSING_METRICS=""
 for metric in http_server_requests_seconds_count jvm_memory_used_bytes hikaricp_connections_active; do
   echo "$METRICS" | grep -q "^$metric" || MISSING_METRICS="$MISSING_METRICS $metric"

@@ -6,3 +6,15 @@ spring:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/${POSTGRES_DB:sentinelops}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:redpanda:9092}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Reached over the Compose-internal network; Keycloak's *reported* issuer stays the
+          # externally-published http://localhost:8180 address regardless (see sentinelops.security.issuer
+          # and the comment on SecurityConfig#jwtDecoder).
+          jwk-set-uri: ${OAUTH2_JWK_SET_URI:http://keycloak:8080/realms/sentinelops/protocol/openid-connect/certs}
+
+sentinelops:
+  security:
+    issuer: ${OAUTH2_ISSUER_URI:http://localhost:8180/realms/sentinelops}

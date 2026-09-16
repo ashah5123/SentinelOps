@@ -6,16 +6,22 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.junit.jupiter.api.BeforeAll;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -25,12 +31,14 @@ import org.testcontainers.utility.MountableFile;
 
 /**
  * Base for full integration and API tests: boots the complete Spring context on a random port
- * against real PostgreSQL and Kafka-compatible (Confluent Kafka image, exercised purely through the
- * standard Kafka client protocol — the same protocol Redpanda serves in every other environment)
- * Testcontainers instances.
+ * against real PostgreSQL, a Kafka-compatible broker (Confluent Kafka image, exercised purely
+ * through the standard Kafka client protocol — the same protocol Redpanda serves in every other
+ * environment), and a real local Keycloak instance (Phase 7) — access tokens used by these tests
+ * are genuine, signature-valid tokens issued by that instance, never fabricated or mocked.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@AutoConfigureMockMvc
 @Testcontainers
 public abstract class AbstractIntegrationTest {
 
@@ -61,7 +69,13 @@ public abstract class AbstractIntegrationTest {
   protected static final ConfluentKafkaContainer KAFKA =
       new ConfluentKafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.7.1"));
 
+  @Container
+  protected static final GenericContainer<?> KEYCLOAK = KeycloakTestSupport.newContainer();
+
+  private static final Map<String, String> TOKEN_CACHE = new ConcurrentHashMap<>();
+
   @Autowired protected TestRestTemplate restTemplate;
+  @Autowired protected MockMvc mockMvc;
 
   @DynamicPropertySource
   static void registerProperties(DynamicPropertyRegistry registry) {
@@ -69,6 +83,48 @@ public abstract class AbstractIntegrationTest {
     registry.add("spring.datasource.username", POSTGRES::getUsername);
     registry.add("spring.datasource.password", POSTGRES::getPassword);
     registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
+    registry.add(
+        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+        () ->
+            KeycloakTestSupport.issuerUri(KEYCLOAK, "sentinelops")
+                + "/protocol/openid-connect/certs");
+    registry.add(
+        "sentinelops.security.issuer",
+        () -> KeycloakTestSupport.issuerUri(KEYCLOAK, "sentinelops"));
+  }
+
+  /** A real, signature-valid access token for one of the three demo users in realm-export.json. */
+  protected static String tokenFor(String role) {
+    return TOKEN_CACHE.computeIfAbsent(
+        role,
+        r -> {
+          String username =
+              switch (r) {
+                case "VIEWER" -> "viewer-demo";
+                case "RESPONDER" -> "responder-demo";
+                case "ADMIN" -> "admin-demo";
+                default -> throw new IllegalArgumentException("Unknown demo role: " + r);
+              };
+          String password = username + "-local-only";
+          return KeycloakTestSupport.fetchAccessToken(
+              KEYCLOAK, "sentinelops", "sentinelops-api", username, password);
+        });
+  }
+
+  protected static HttpHeaders bearerHeaders(String role) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(tokenFor(role));
+    return headers;
+  }
+
+  protected static <T> HttpEntity<T> withAuth(T body, String role) {
+    return withAuth(body, role, new HttpHeaders());
+  }
+
+  protected static <T> HttpEntity<T> withAuth(T body, String role, HttpHeaders extraHeaders) {
+    HttpHeaders headers = bearerHeaders(role);
+    headers.addAll(extraHeaders);
+    return new HttpEntity<>(body, headers);
   }
 
   @BeforeAll

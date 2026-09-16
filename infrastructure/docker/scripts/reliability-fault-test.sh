@@ -37,6 +37,21 @@ COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 INCIDENT_SERVICE_PORT="${INCIDENT_SERVICE_PORT:-8081}"
 RUN_ID="fault-$(date +%s)-$$"
 
+# shellcheck disable=SC1091
+source "$REPO_ROOT/infrastructure/docker/scripts/lib/auth.sh"
+# Phase 7 requires a bearer token on every /api/v1/incidents call; RESPONDER can create and read
+# incidents (see docs/development/security.md's role-permission matrix). Fetched once per run.
+RESPONDER_TOKEN=""
+responder_token() {
+  if [ -z "$RESPONDER_TOKEN" ]; then
+    RESPONDER_TOKEN="$(fetch_incident_service_token responder-demo)" || {
+      echo "FAIL: could not obtain a responder-demo token from Keycloak. Is 'make incident-up' running?"
+      exit 1
+    }
+  fi
+  echo "$RESPONDER_TOKEN"
+}
+
 # retry <attempts> <sleep_seconds> <command...>
 retry() {
   local attempts="$1" sleep_s="$2"
@@ -81,10 +96,12 @@ EOF
   echo "$envelope" | "${COMPOSE[@]}" exec -T redpanda rpk topic produce telemetry.anomaly.v1 --brokers redpanda:9092 >/dev/null
   echo "$envelope" | "${COMPOSE[@]}" exec -T redpanda rpk topic produce telemetry.anomaly.v1 --brokers redpanda:9092 >/dev/null
 
+  local token
+  token="$(responder_token)"
   echo "Waiting for the incident to be created (bounded retries)..."
-  if retry 20 1 curl -fsS "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents?affectedService=reliability-fault-test-service"; then
+  if retry 20 1 curl -fsS -H "Authorization: Bearer ${token}" "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents?affectedService=reliability-fault-test-service"; then
     local incident_count
-    incident_count="$(curl -fsS "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents?affectedService=reliability-fault-test-service" \
+    incident_count="$(curl -fsS -H "Authorization: Bearer ${token}" "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents?affectedService=reliability-fault-test-service" \
       | python3 -c 'import json,sys; print(len([i for i in json.load(sys.stdin).get("content",[])]))' 2>/dev/null || echo unknown)"
     echo "RESULT: incidents found for reliability-fault-test-service = ${incident_count} (expect exactly 1 per run of this scenario)"
   else
@@ -101,12 +118,15 @@ scenario_broker_outage() {
   paused_at="$(date +%s)"
 
   local correlation_id="corr-${RUN_ID}-broker-outage"
+  local token
+  token="$(responder_token)"
   echo "Creating a test incident while the broker is paused (its outbox row must stay PENDING)..."
   curl -sS -X POST "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents" \
+    -H "Authorization: Bearer ${token}" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: ${RUN_ID}-outage" \
     -H "X-Correlation-ID: ${correlation_id}" \
-    -d '{"title":"Broker outage fault test","description":"Injected by reliability-fault-test.sh","severity":"SEV4","source":"reliability-fault-test","affectedService":"reliability-fault-test-service"}' \
+    -d '{"title":"Broker outage fault test","description":"Injected by reliability-fault-test.sh","severity":"SEV4","source":"reliability-fault-test","affectedService":"reliability-fault-test-service","detectedAt":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}' \
     >/dev/null
 
   echo "Leaving the broker paused for 5 seconds to demonstrate the event is retained, not lost..."
@@ -121,7 +141,7 @@ scenario_broker_outage() {
     echo "RESULT: broker was paused for $((recovered_at - paused_at))s total (including the fixed 5s hold); check the"
     echo "        sentinelops_outbox_oldest_pending_age_seconds gauge or the incident's timeline to confirm actual publish time."
   fi
-  echo "Inspect: curl -s http://127.0.0.1:${INCIDENT_SERVICE_PORT}/actuator/prometheus | grep outbox_oldest_pending_age"
+  echo "Inspect: curl -s -u \"\$ACTUATOR_METRICS_USERNAME:\$ACTUATOR_METRICS_PASSWORD\" http://127.0.0.1:${INCIDENT_SERVICE_PORT}/actuator/prometheus | grep outbox_oldest_pending_age"
 }
 
 scenario_app_restart() {
@@ -130,11 +150,14 @@ scenario_app_restart() {
   local correlation_id="corr-${RUN_ID}-restart"
   echo "Pausing redpanda so the next incident's outbox row is guaranteed to still be PENDING at restart time..."
   "${COMPOSE[@]}" pause redpanda
+  local token
+  token="$(responder_token)"
   curl -sS -X POST "http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents" \
+    -H "Authorization: Bearer ${token}" \
     -H "Content-Type: application/json" \
     -H "Idempotency-Key: ${RUN_ID}-restart" \
     -H "X-Correlation-ID: ${correlation_id}" \
-    -d '{"title":"Restart fault test","description":"Injected by reliability-fault-test.sh","severity":"SEV4","source":"reliability-fault-test","affectedService":"reliability-fault-test-service"}' \
+    -d '{"title":"Restart fault test","description":"Injected by reliability-fault-test.sh","severity":"SEV4","source":"reliability-fault-test","affectedService":"reliability-fault-test-service","detectedAt":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}' \
     >/dev/null
   echo "Restarting the incident-service container (the pending row lives in PostgreSQL, not in the process)..."
   "${COMPOSE[@]}" restart incident-service
@@ -193,7 +216,7 @@ EOF
   else
     echo "RESULT: event was NOT found on the dead-letter topic within the retry budget — either it succeeded"
     echo "        after postgres recovered (also acceptable), or something needs investigation. Check:"
-    echo "        curl -s http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents?affectedService=reliability-fault-test-service"
+    echo "        curl -s -H \"Authorization: Bearer \$TOKEN\" http://127.0.0.1:${INCIDENT_SERVICE_PORT}/api/v1/incidents?affectedService=reliability-fault-test-service"
   fi
 }
 

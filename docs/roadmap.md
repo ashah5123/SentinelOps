@@ -199,7 +199,7 @@ a shared incident-evidence model, feeding the incident service.
   done — see `services/telemetry-correlation-service/README.md`'s
   known-limitations section for the exact list.
 
-## Phase 6 (reliability hardening) — Production reliability and failure recovery (current)
+## Phase 6 (reliability hardening) — Production reliability and failure recovery
 
 **Note on numbering:** this is a cross-cutting reliability-hardening pass applied to the
 already-completed incident service (Phase 3) and telemetry-correlation service (Phase 5) — it
@@ -249,6 +249,119 @@ message-broker interruptions — see
   parsing) was completed and passes — see `docs/benchmarks/phase-6-reliability.md` for the exact
   results and what remains unverified. This must be completed and confirmed before this Phase 6
   (reliability hardening) is considered fully done.
+
+## Phase 7 (authentication, authorization, and audit logging) — Identity and access control for the incident service
+
+**Note on numbering:** like Phase 6 (reliability hardening) above, this is a cross-cutting
+security-hardening pass applied to the already-completed incident service (Phase 3) — it is
+tracked separately from the sequentially numbered "Phase 7" below ("Investigation agent and
+retrieval"), which remains unstarted future work. Every other reference to "Phase 7" in this
+repository's documentation means *this* security-hardening work unless it explicitly says
+"Investigation agent."
+
+**Goal:** Make the incident service require authentication, enforce server-side role-based
+authorization (`VIEWER`/`RESPONDER`/`ADMIN`), and record a reliable, admin-queryable audit trail —
+see [`docs/development/security.md`](development/security.md).
+
+**Acceptance criteria:**
+- [x] A local Keycloak realm (`infrastructure/docker/keycloak/realm-export.json`), imported
+  automatically on Compose startup, defines the `VIEWER`/`RESPONDER`/`ADMIN` realm roles, the
+  `sentinelops-api` client (with an audience mapper), and three synthetic demo users — all
+  bound to `127.0.0.1` only.
+- [x] The incident service is an OAuth 2.0 resource server (`spring-boot-starter-oauth2-resource-server`)
+  validating token signature, issuer, audience, and expiry on every request
+  (`SecurityConfig`, `JwtAudienceValidator`); missing, malformed, wrong-issuer, wrong-audience,
+  and expired tokens are all rejected with `401`.
+- [x] Every incident-management endpoint is annotated with an explicit `@PreAuthorize` role rule;
+  actor identity for every audit record and domain action comes only from the validated token's
+  `sub` claim (`AuthenticatedActor`) — no request field can set or override it, and existing
+  domain-transition validation (`IncidentTransitions`) is unchanged.
+- [x] A new admin-only, paginated, bounded-filter global audit endpoint
+  (`GET /api/v1/admin/audit-events`) and a bounded manual dead-letter-replay endpoint
+  (`POST /api/v1/admin/dead-letter-topics/{topic}/replay`, restricted to the two `.dlq` topics
+  this service consumes from) reuse the existing Phase 3 audit/outbox and Phase 6 dead-letter
+  infrastructure rather than introducing new mechanisms.
+- [x] Authorization denials are audited independently of the triggering request's own transaction
+  (`DeniedActionAuditService`, `REQUIRES_NEW`); audit persistence failures increment a dedicated
+  metric rather than failing silently.
+- [x] New bounded-cardinality metrics (`sentinelops.auth.authentication_failures`,
+  `sentinelops.auth.authorization_denials`, `sentinelops.audit.persistence_failures`) — none
+  tagged by user ID, incident ID, or raw request path.
+- [x] `/actuator/prometheus` requires HTTP Basic auth (a local static credential) rather than
+  being anonymous; `/actuator/health(/**)` and `/actuator/info` remain public (required for the
+  container health check); every other Actuator and documentation endpoint requires
+  authentication. CORS is explicit and closed by default (`CORS_ALLOWED_ORIGINS`); CSRF is
+  deliberately disabled with its rationale documented (stateless bearer-token API, no cookies).
+- [x] Unit tests for the audience/role-mapping logic; a `MockMvc` + Spring Security test-support
+  role-permission-matrix suite (allowed/forbidden per role, actor-identity-override attempts,
+  invalid-transition-still-rejected, per-incident audit endpoint now admin-only); an
+  embedded-Kafka test for dead-letter replay; and a real local-Keycloak integration test suite
+  (`TokenValidationIntegrationTest`) covering missing/malformed/tampered/expired tokens and
+  wrong-issuer/wrong-audience tokens minted by real, separate Keycloak clients/realms — no
+  authentication is mocked in that suite.
+- [x] All pre-existing Phase 3/4/5/6 unit tests continue to pass unmodified in assertions (only
+  updated to attach the auth headers now required); no existing test's assertions were weakened.
+- [ ] End-to-end runtime verification (the Keycloak-backed integration/role-matrix/API tests
+  actually executing against a real Keycloak + PostgreSQL + Kafka-compatible broker, `make
+  incident-up` bringing up Keycloak healthy, and a live demo walking through viewer/responder/
+  admin behavior) — **blocked**: Docker was not installed in the environment this phase was
+  authored in, consistent with every prior phase's runtime-verification gap. Static validation
+  (compile, the full non-Docker/non-Testcontainers unit test suite — including a real
+  embedded-Kafka dead-letter-replay test, which does not require Docker — and Compose/JSON/YAML
+  config parsing) was completed and passes; see the phase completion report for exact numbers.
+  This must be completed and confirmed before this Phase 7 (authentication, authorization, and
+  audit logging) is considered fully done.
+
+## Phase 8 (performance testing and reproducible benchmarks) — Load-test harness for the incident service (current)
+
+**Note on numbering:** like Phase 6 (reliability hardening) and Phase 7 (authentication,
+authorization, and audit logging) above, this is a cross-cutting measurement pass applied to the
+already-completed incident service — tracked separately from the sequentially numbered "Phase 8"
+below ("Human approval workflow and remediation recommendations"), which remains unstarted future
+work.
+
+**Goal:** Build a reproducible, local, free/open-source load-testing harness (k6, via its own
+Docker image) for the incident service's real endpoints, establish a measured baseline, and make
+one evidence-backed optimization if the evidence supports it — see
+[`docs/development/performance.md`](development/performance.md) and
+[`docs/benchmarks/phase-8-performance.md`](../benchmarks/phase-8-performance.md).
+
+**Acceptance criteria:**
+- [x] Deterministic, isolated synthetic data seeding (`benchmark-seed.sh`, fixed random seed,
+  every record tagged with a `bench-<runId>` `affectedService` marker) and scoped cleanup
+  (`benchmark-cleanup.sh`) that only ever deletes rows matching that marker.
+- [x] k6 scenarios for paginated reads, incident creation (with downstream outbox/event
+  processing measured separately from HTTP acceptance latency), valid lifecycle transitions
+  (each iteration owns a freshly created incident — no cross-VU transition conflicts), a mixed
+  read/write workload, a bounded burst-and-recovery scenario, and a scenario dedicated to
+  intentional unauthorized-request checks (kept separate from every performance number). Every
+  scenario authenticates for real against the local Keycloak realm added in Phase 7 — no mocked
+  or disabled authentication, no hardcoded credentials.
+- [x] An orchestrator (`benchmark-run.sh`) that captures git revision/dirty state, host/Docker
+  resource limits, pinned image versions, and relevant configuration per run, and samples
+  incident-service's existing `/actuator/prometheus` (outbox backlog/oldest-pending-age/dead-
+  letter/retry counters, HikariCP pool usage, process CPU, JVM heap, and the Phase 7 auth/audit
+  failure counters) before, during, and after each run — reusing existing instrumentation rather
+  than adding new metrics.
+- [x] A regression this phase found via static review: Phase 7's mandatory authentication broke
+  three pre-existing local scripts (`reliability-fault-test.sh`, `correlation-smoke-test.sh`,
+  `observability-smoke-test.sh`) that called incident-service without a bearer token or the
+  `/actuator/prometheus` Basic-auth credentials; all three were fixed (a shared
+  `scripts/lib/auth.sh` helper), along with two unrelated pre-existing missing-`detectedAt`
+  payload bugs found in the same review.
+- [x] CI wiring: a short, bounded functional smoke benchmark runs on every push/PR; heavier
+  scenarios are opt-in only (`workflow_dispatch`), not gating merges on shared-runner timing
+  variance.
+- [ ] An actual measured baseline, an evidence-backed optimization (or an explicit finding that
+  none was identified), and a before/after comparison — **blocked**: Docker (and therefore k6,
+  Postgres, Redpanda, and Keycloak) was not installed in the environment this phase was authored
+  in, and the environment's owner asked not to install anything to conserve disk space. Every
+  scenario, script, and CI job was built and statically validated (shell/JS syntax, YAML/JSON
+  parsing, and the metrics-parsing/summary-generation logic unit-verified against hand-written
+  fake input) but **never actually run**. No benchmark number in this repository's documentation
+  is a real measurement. This must be executed — following the exact commands in
+  `docs/development/performance.md` — before this Phase 8 (performance testing) is considered
+  fully done.
 
 ## Phase 6 — Detection engine
 

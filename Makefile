@@ -2,7 +2,8 @@
 	incident-build incident-test incident-image incident-up incident-down incident-logs \
 	observability-config observability-up observability-down observability-status observability-logs observability-smoke \
 	correlation-build correlation-test correlation-image correlation-up correlation-down correlation-status correlation-logs correlation-smoke \
-	reliability-test
+	reliability-test \
+	benchmark-env-info benchmark-seed benchmark-cleanup benchmark-smoke benchmark-unauthorized benchmark-reads benchmark-create benchmark-lifecycle benchmark-mixed benchmark-burst
 
 ENV_FILE := .env
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
@@ -43,6 +44,16 @@ help: ## Show available targets
 	@echo "  make correlation-logs      Tail telemetry-correlation-service logs"
 	@echo "  make correlation-smoke     Run the Phase 5 correlation smoke test"
 	@echo "  make reliability-test      Run the Phase 6 fault-injection workflow (SCENARIO=...)"
+	@echo "  make benchmark-env-info    Print environment/config info for a benchmark run"
+	@echo "  make benchmark-seed        Seed deterministic synthetic incidents (RUN_ID=, SIZE=, SEED=)"
+	@echo "  make benchmark-cleanup     Delete a benchmark run's data (RUN_ID=... or ALL=1)"
+	@echo "  make benchmark-smoke       Run the bounded functional smoke scenario"
+	@echo "  make benchmark-unauthorized Run the intentional unauthorized-request scenario"
+	@echo "  make benchmark-reads       Run the paginated-reads scenario (RUN_ID= required)"
+	@echo "  make benchmark-create      Run the incident-creation scenario"
+	@echo "  make benchmark-lifecycle   Run the lifecycle-transitions scenario"
+	@echo "  make benchmark-mixed       Run the mixed read/write workload scenario"
+	@echo "  make benchmark-burst       Run the short bounded burst + recovery scenario"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -222,3 +233,45 @@ correlation-smoke: ## Run the Phase 5 correlation smoke test
 
 reliability-test: ## Run the Phase 6 fault-injection workflow (SCENARIO=duplicate-delivery|broker-outage|app-restart|invalid-event|retry-exhaustion|all, default: all)
 	@bash infrastructure/docker/scripts/reliability-fault-test.sh $${SCENARIO:-all}
+
+## ---- Phase 8: performance testing and reproducible benchmarks ----
+##
+## Requires the "app" Compose profile already running (make incident-up). See
+## docs/development/performance.md for the full guide. RUN_ID ties a seed run to the k6 runs
+## that read it; if you don't set one, benchmark-seed prints the generated value to reuse.
+
+benchmark-env-info: ## Print environment/config info that would be captured for a benchmark run
+	@bash infrastructure/docker/scripts/benchmark-env-info.sh
+
+benchmark-seed: ## Seed deterministic synthetic incidents (RUN_ID=, SIZE=200, SEED=42)
+	@bash infrastructure/docker/scripts/benchmark-seed.sh "$${RUN_ID:-}" "$${SIZE:-200}" "$${SEED:-42}"
+
+benchmark-cleanup: ## Delete a benchmark run's data (RUN_ID=... required, or ALL=1 for every run)
+	@if [ -n "$${ALL:-}" ]; then \
+		bash infrastructure/docker/scripts/benchmark-cleanup.sh --all-bench; \
+	else \
+		test -n "$${RUN_ID:-}" || (echo "ERROR: set RUN_ID=<id> or ALL=1" && exit 1); \
+		bash infrastructure/docker/scripts/benchmark-cleanup.sh "$$RUN_ID"; \
+	fi
+
+benchmark-smoke: ## Run the bounded functional smoke scenario (also used in CI)
+	@bash infrastructure/docker/scripts/benchmark-run.sh smoke
+
+benchmark-unauthorized: ## Run the intentional unauthorized-request scenario (security checks, not perf)
+	@bash infrastructure/docker/scripts/benchmark-run.sh unauthorized-access
+
+benchmark-reads: ## Run the paginated-reads scenario against a seeded dataset (RUN_ID= required)
+	@test -n "$${RUN_ID:-}" || (echo "ERROR: set RUN_ID=<id from benchmark-seed>" && exit 1)
+	@BENCHMARK_RUN_ID="$$RUN_ID" bash infrastructure/docker/scripts/benchmark-run.sh paginated-reads
+
+benchmark-create: ## Run the incident-creation scenario (downstream outbox/event processing)
+	@bash infrastructure/docker/scripts/benchmark-run.sh incident-creation
+
+benchmark-lifecycle: ## Run the lifecycle-transitions scenario
+	@bash infrastructure/docker/scripts/benchmark-run.sh lifecycle-transitions
+
+benchmark-mixed: ## Run the mixed read/write workload scenario (RUN_ID= optional, uses seeded data if set)
+	@BENCHMARK_RUN_ID="$${RUN_ID:-}" bash infrastructure/docker/scripts/benchmark-run.sh mixed-workload
+
+benchmark-burst: ## Run the short bounded burst + recovery scenario
+	@bash infrastructure/docker/scripts/benchmark-run.sh burst-recovery
