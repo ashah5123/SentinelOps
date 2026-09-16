@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclude filter (Phase 9). Every exclusion here is a deliberate, reviewed decision, never
+  a blanket suppression — add a new one only with a comment explaining why it is a false positive
+  in this codebase specifically.
+-->
+<FindBugsFilter>
+  <!--
+    EI_EXPOSE_REP / EI_EXPOSE_REP2 ("may expose internal representation") fire on every
+    constructor parameter stored directly into a field — including every ordinary Spring
+    constructor-injected dependency (@Service/@Component/@Repository beans, ObjectMapper,
+    MeterRegistry) and every DTO record/constructor that stores a List. Defensively copying a
+    Spring-managed singleton bean, or copying every list a response DTO wraps, would be pure
+    busywork with no real safety benefit here: these are not mutable shared state an attacker or
+    concurrent caller can corrupt through this reference, they are the same object graph Spring's
+    IoC container already manages as effectively-singleton or per-request-scoped for the object's
+    entire lifetime. Excluded wholesale for this reason (reviewed 2026-09, all findings at the time
+    were exactly this pattern — see the CI static-analysis job's own run for what would otherwise
+    fail).
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+</FindBugsFilter>

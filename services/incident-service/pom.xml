@@ -196,6 +196,22 @@
       </plugin>
 
       <plugin>
+        <!-- Static analysis (Phase 9). Not bound to any lifecycle phase here — run explicitly via
+             `mvn spotbugs:check` (see the CI "static-analysis" job) so a new finding never
+             silently breaks the main `mvn verify` build; findings are reviewed and either fixed or
+             excluded deliberately in spotbugs-exclude.xml, not suppressed wholesale. -->
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>4.8.6.6</version>
+        <configuration>
+          <effort>Max</effort>
+          <threshold>Medium</threshold>
+          <excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+          <failOnError>true</failOnError>
+        </configuration>
+      </plugin>
+
+      <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>${jacoco.version}</version>

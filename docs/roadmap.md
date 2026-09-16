@@ -312,7 +312,7 @@ see [`docs/development/security.md`](development/security.md).
   This must be completed and confirmed before this Phase 7 (authentication, authorization, and
   audit logging) is considered fully done.
 
-## Phase 8 (performance testing and reproducible benchmarks) — Load-test harness for the incident service (current)
+## Phase 8 (performance testing and reproducible benchmarks) — Load-test harness for the incident service
 
 **Note on numbering:** like Phase 6 (reliability hardening) and Phase 7 (authentication,
 authorization, and audit logging) above, this is a cross-cutting measurement pass applied to the
@@ -362,6 +362,54 @@ one evidence-backed optimization if the evidence supports it — see
   is a real measurement. This must be executed — following the exact commands in
   `docs/development/performance.md` — before this Phase 8 (performance testing) is considered
   fully done.
+
+## Phase 9 (production readiness, CI/CD, backup, and release recovery) — current
+
+**Note on numbering:** like Phases 6-8 above, this is a cross-cutting hardening pass applied to
+the already-completed incident service (and, for static analysis, the telemetry-correlation
+service) — tracked separately from the sequentially numbered "Phase 9" below ("Operator dashboard
+and auditable reporting"), which remains unstarted future work.
+
+**Goal:** Make SentinelOps safely buildable, deployable, recoverable, and maintainable — see
+[`docs/development/operations.md`](development/operations.md).
+
+**Acceptance criteria:**
+- [x] CI (`ci.yml`) hardened: `concurrency: cancel-in-progress`, per-job `timeout-minutes`,
+  least-privilege `permissions` on every job, a new `static-analysis` job (SpotBugs, both
+  services), a new `docker-build` job, new `vulnerability-scan` (Trivy, dependency + image,
+  documented `ignore-unfixed` severity policy) and `sbom` (Syft/CycloneDX) jobs, and a new
+  `backup-restore-verify` job. No job requires a repository secret or a paid service.
+- [x] `spotbugs-maven-plugin` added to both services; the only findings on first run were
+  Spring-constructor-injection false positives (`EI_EXPOSE_REP`/`EI_EXPOSE_REP2`, documented and
+  excluded) plus one real, fixed defect (`DCN_NULLPOINTER_EXCEPTION` — catching `NullPointerException`
+  instead of a null check in `TempoNormalizer`).
+- [x] Migration release-safety reviewed: every migration to date is purely additive (documented
+  table in operations.md); a new `MigrationUpgradePathTest` proves the N-1 -> N upgrade path
+  preserves existing data and that the application's own non-superuser role can use the newly
+  added table immediately.
+- [x] PostgreSQL backup/restore tooling (`db-backup.sh`, `db-restore.sh`,
+  `db-restore-verify.sh`) — explicit target database required, restore over the primary
+  database refused, interactive confirmation, and a restore-verification workflow that proves a
+  backup is actually restorable (not just that `pg_dump` exited zero) via a disposable database.
+- [x] `integrity-check.sh` — bounded, read-only, exits non-zero on violation, never prints
+  sensitive row contents; no tenancy check (none exists in this codebase).
+- [x] Documented release/rollback procedure distinguishing application rollback, database
+  restore, forward repair, and event replay, with rollback decision criteria and an explicit
+  statement that database restore is never automatically safe; a local `release-rehearsal.sh`
+  demonstrates the full procedure including a simulated failed release and an application
+  rollback.
+- [x] `ProductionSafetyCheck`: fails incident-service startup with a clear, itemized message when
+  `ENVIRONMENT=production` and a credential/CORS/issuer/log-level setting still holds a
+  development-only value; does nothing outside a declared production environment.
+- [ ] Actual execution of every Docker-dependent check (CI jobs beyond `validate`/
+  `static-analysis`, `make release-rehearsal`, real backup/restore/integrity numbers, Docker
+  image sizes, Trivy/SBOM output) — **blocked**: Docker is not installed in the environment this
+  phase was authored in, and installing it was explicitly declined to conserve local disk space.
+  Every script, test, and CI job was written and statically validated (shell syntax, YAML
+  parsing, and every non-Docker-dependent unit test — including `ProductionSafetyCheckTest` and
+  both services' full non-Docker test suites, 70/70 and 49/49 passing respectively) but never
+  executed end to end. This must be run — following the exact commands in
+  `docs/development/operations.md` — before this Phase 9 is considered fully done.
 
 ## Phase 6 — Detection engine
 

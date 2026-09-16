@@ -150,3 +150,9 @@ secrets/
 # =========================
 infrastructure/docker/k6/results/*
 !infrastructure/docker/k6/results/.gitkeep
+
+# =========================
+# Phase 9 local database backups (never committed — may contain real data)
+# =========================
+infrastructure/docker/backups/*
+!infrastructure/docker/backups/.gitkeep

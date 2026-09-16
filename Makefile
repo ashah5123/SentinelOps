@@ -3,7 +3,8 @@
 	observability-config observability-up observability-down observability-status observability-logs observability-smoke \
 	correlation-build correlation-test correlation-image correlation-up correlation-down correlation-status correlation-logs correlation-smoke \
 	reliability-test \
-	benchmark-env-info benchmark-seed benchmark-cleanup benchmark-smoke benchmark-unauthorized benchmark-reads benchmark-create benchmark-lifecycle benchmark-mixed benchmark-burst
+	benchmark-env-info benchmark-seed benchmark-cleanup benchmark-smoke benchmark-unauthorized benchmark-reads benchmark-create benchmark-lifecycle benchmark-mixed benchmark-burst \
+	db-backup db-restore db-restore-verify integrity-check release-rehearsal
 
 ENV_FILE := .env
 COMPOSE_FILE := infrastructure/docker/docker-compose.yml
@@ -54,6 +55,11 @@ help: ## Show available targets
 	@echo "  make benchmark-lifecycle   Run the lifecycle-transitions scenario"
 	@echo "  make benchmark-mixed       Run the mixed read/write workload scenario"
 	@echo "  make benchmark-burst       Run the short bounded burst + recovery scenario"
+	@echo "  make db-backup             Create a compressed, timestamped pg_dump backup"
+	@echo "  make db-restore            Restore a backup into an explicit target DB (FILE=, TARGET_DB=)"
+	@echo "  make db-restore-verify     Restore into a disposable DB and verify it (FILE=)"
+	@echo "  make integrity-check       Run the data-integrity check (DATABASE= optional)"
+	@echo "  make release-rehearsal     Run the local release rehearsal"
 
 doctor: ## Check prerequisites without installing or modifying anything
 	@echo "== SentinelOps environment check =="
@@ -275,3 +281,26 @@ benchmark-mixed: ## Run the mixed read/write workload scenario (RUN_ID= optional
 
 benchmark-burst: ## Run the short bounded burst + recovery scenario
 	@bash infrastructure/docker/scripts/benchmark-run.sh burst-recovery
+
+## ---- Phase 9: production readiness, backup/restore, and integrity checks ----
+##
+## Requires the "app" or "infra" Compose profile already running (make infra-up / incident-up).
+## See docs/development/operations.md for the full guide.
+
+db-backup: ## Create a compressed, timestamped pg_dump backup (OUT_DIR= optional)
+	@bash infrastructure/docker/scripts/db-backup.sh $${OUT_DIR:-}
+
+db-restore: ## Restore a backup into an explicit target database (FILE=, TARGET_DB= required)
+	@test -n "$${FILE:-}" || (echo "ERROR: set FILE=<path to backup>" && exit 1)
+	@test -n "$${TARGET_DB:-}" || (echo "ERROR: set TARGET_DB=<explicit target database name>" && exit 1)
+	@bash infrastructure/docker/scripts/db-restore.sh "$$FILE" "$$TARGET_DB"
+
+db-restore-verify: ## Restore a backup into a disposable database and verify it (FILE= required)
+	@test -n "$${FILE:-}" || (echo "ERROR: set FILE=<path to backup>" && exit 1)
+	@bash infrastructure/docker/scripts/db-restore-verify.sh "$$FILE"
+
+integrity-check: ## Run the data-integrity check (DATABASE= optional, defaults to POSTGRES_DB)
+	@bash infrastructure/docker/scripts/integrity-check.sh $${DATABASE:-}
+
+release-rehearsal: ## Run the local release rehearsal (see docs/development/operations.md)
+	@bash infrastructure/docker/scripts/release-rehearsal.sh

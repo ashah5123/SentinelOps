@@ -126,10 +126,13 @@ public class TempoNormalizer {
   }
 
   private Instant fromUnixNanoString(String unixNano) {
+    if (unixNano == null) {
+      return null;
+    }
     try {
       long nanos = Long.parseLong(unixNano);
       return Instant.ofEpochSecond(0, nanos);
-    } catch (NumberFormatException | NullPointerException e) {
+    } catch (NumberFormatException e) {
       return null;
     }
   }

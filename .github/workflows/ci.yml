@@ -25,6 +25,16 @@ on:
           - mixed-workload
           - burst-recovery
 
+# Phase 9: cancel a still-running workflow for the same branch/PR once a newer commit supersedes
+# it, so pushes to an active PR don't queue up redundant, obsolete runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege default: every job gets only what it actually needs, declared on the job itself
+# (see each job below) rather than widened here. Ordinary pull-request validation never requires a
+# repository secret or an external paid service — every job in this file runs on public,
+# unauthenticated pulls/inputs only.
 permissions:
   contents: read
 
@@ -32,6 +42,9 @@ jobs:
   validate:
     name: Repository validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,9 +52,35 @@ jobs:
       - name: make validate
         run: make validate
 
+  static-analysis:
+    name: Static analysis (SpotBugs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service: [incident-service, telemetry-correlation-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: services/${{ matrix.service }}/pom.xml
+      - name: mvnw compile && spotbugs:check
+        working-directory: services/${{ matrix.service }}
+        run: |
+          ./mvnw -B compile
+          ./mvnw -B spotbugs:check
+
   incident-service:
     name: incident-service build and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -50,13 +89,21 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: services/incident-service/pom.xml
-      - name: mvnw verify (unit, security, and Testcontainers/Keycloak integration tests)
+      # Covers unit tests, security/authN-authZ tests, transactional-outbox/idempotency
+      # integration tests, and database migration validation (FlywayMigrationTest,
+      # MigrationUpgradePathTest — see docs/development/operations.md's migration section) in one
+      # pass: all are plain JUnit tests Maven Surefire/Failsafe discovers and runs as part of the
+      # module's normal `verify` build, so a separate duplicate job would only waste runner time.
+      - name: mvnw verify (unit, security, reliability/idempotency, and migration tests)
         working-directory: services/incident-service
         run: ./mvnw -B verify
 
   telemetry-correlation-service:
     name: telemetry-correlation-service build and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -65,13 +112,16 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: services/telemetry-correlation-service/pom.xml
-      - name: mvnw verify
+      - name: mvnw verify (unit, reliability/idempotency, and migration tests)
         working-directory: services/telemetry-correlation-service
         run: ./mvnw -B verify
 
   compose-config:
     name: Docker Compose configuration check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Prepare a throwaway .env
@@ -82,6 +132,122 @@ jobs:
             --profile console --profile app --profile observability --profile benchmark \
             config --quiet
 
+  docker-build:
+    name: Docker image build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service: [incident-service, telemetry-correlation-service]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: |
+          docker build -t "sentinelops/${{ matrix.service }}:ci" services/${{ matrix.service }}
+      - name: Record image size (measured evidence, not a target)
+        run: |
+          docker image inspect "sentinelops/${{ matrix.service }}:ci" \
+            --format 'image={{.RepoTags}} size_bytes={{.Size}}'
+      - name: Save image as a build artifact for the scan/SBOM jobs
+        run: |
+          docker save "sentinelops/${{ matrix.service }}:ci" -o "/tmp/${{ matrix.service }}.tar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp/${{ matrix.service }}.tar
+          retention-days: 1
+
+  # Phase 9: dependency and container-image vulnerability scanning (Trivy — free, open-source).
+  # Severity policy (deliberate, documented): fails the build only on CRITICAL/HIGH
+  # vulnerabilities that already have a published fix (`ignore-unfixed: true`). A vulnerability
+  # with no upstream fix yet cannot be remediated by this repository changing anything, so it is
+  # reported (visible in the uploaded scan report artifact) but does not block merges — this is a
+  # policy choice, not an oversight; revisit it if a specific unfixed CVE needs tracking
+  # differently.
+  vulnerability-scan:
+    name: Vulnerability scan (${{ matrix.service }})
+    needs: docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service: [incident-service, telemetry-correlation-service]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Filesystem/dependency scan (pom.xml)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: fs
+          scan-ref: services/${{ matrix.service }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy-${{ matrix.service }}-dependencies.txt
+          exit-code: "1"
+      - uses: actions/download-artifact@v4
+        if: always()
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp
+      - name: Load the built image
+        if: always()
+        run: docker load -i "/tmp/${{ matrix.service }}.tar"
+      - name: Container image scan
+        if: always()
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: image
+          image-ref: sentinelops/${{ matrix.service }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy-${{ matrix.service }}-image.txt
+          exit-code: "1"
+      - name: Upload scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports-${{ matrix.service }}
+          path: trivy-${{ matrix.service }}-*.txt
+          retention-days: 30
+
+  sbom:
+    name: SBOM generation (${{ matrix.service }})
+    needs: docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service: [incident-service, telemetry-correlation-service]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.service }}
+          path: /tmp
+      - name: Load the built image
+        run: docker load -i "/tmp/${{ matrix.service }}.tar"
+      - name: Generate SBOM (CycloneDX, via Syft)
+        uses: anchore/sbom-action@v0.17.9
+        with:
+          image: sentinelops/${{ matrix.service }}:ci
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.service }}.cyclonedx.json
+          upload-artifact: false
+      # Generated reports are CI artifacts only (see Phase 9's own instruction not to commit
+      # generated reports unless the repository already tracks such artifacts — it does not).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cyclonedx.json
+          retention-days: 30
+
   # Phase 8: a short, bounded functional smoke benchmark (single VU, ~30s, see
   # infrastructure/docker/k6/scenarios/smoke.js) runs on every push/PR — it is cheap and catches
   # real regressions in the authenticated request path end to end. Heavier load scenarios
@@ -91,6 +257,9 @@ jobs:
   benchmark-smoke:
     name: Phase 8 benchmark smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Prepare .env
@@ -124,6 +293,9 @@ jobs:
     name: Phase 8 extended benchmark (opt-in)
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.extended_scenario != 'none'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Prepare .env
@@ -154,6 +326,43 @@ jobs:
         with:
           name: benchmark-results-${{ github.event.inputs.extended_scenario }}
           path: infrastructure/docker/k6/results/
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes
+
+  # Phase 9: proves backup/restore actually works, not just that pg_dump exits zero — restores
+  # into a disposable database (never the one just seeded) and runs the data-integrity check
+  # against the restored copy.
+  backup-restore-verify:
+    name: Backup, restore verification, and data-integrity check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: cp .env.example .env
+      - name: Start Postgres and the incident service
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: Seed a small amount of representative data
+        run: bash infrastructure/docker/scripts/benchmark-seed.sh ci-backup-check 10 42
+      - name: Create a backup
+        run: bash infrastructure/docker/scripts/db-backup.sh
+      - name: Verify the backup (restore into a disposable database + integrity check)
+        run: |
+          BACKUP_FILE="$(ls -t infrastructure/docker/backups/*.dump | head -1)"
+          bash infrastructure/docker/scripts/db-restore-verify.sh "$BACKUP_FILE"
+      - name: Run the data-integrity check against the live database too
+        run: bash infrastructure/docker/scripts/integrity-check.sh
       - name: Tear down
         if: always()
         run: |

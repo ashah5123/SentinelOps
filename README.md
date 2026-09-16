@@ -10,9 +10,11 @@ Alertmanager), a telemetry ingestion and deterministic correlation
 service (Phase 5), reliability/failure-recovery hardening for both
 Java services (Phase 6), authentication/authorization/audit
 logging for the incident service via a local Keycloak realm (Phase 7),
-and a reproducible, local, k6-based performance-benchmarking harness
-for the incident service (Phase 8 — built but not yet executed; see
-below).
+a reproducible, local, k6-based performance-benchmarking harness
+for the incident service (Phase 8 — built but not yet executed), and
+hardened CI/CD, database migration release-safety, PostgreSQL backup/
+restore, data-integrity verification, and a documented release/
+rollback procedure (Phase 9 — built but not yet executed; see below).
 No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
 frontend, or remediation execution are implemented yet. See
 [docs/roadmap.md](docs/roadmap.md) for current phase status, including
@@ -192,6 +194,7 @@ with acceptance criteria. In summary:
 - [Local platform reference](docs/development/local-platform.md)
 - [Authentication, authorization, and audit logging](docs/development/security.md)
 - [Performance testing and reproducible benchmarks](docs/development/performance.md)
+- [Production readiness, CI/CD, backup, and release recovery](docs/development/operations.md)
 - [Incident-service README](services/incident-service/README.md)
 - [Incident-service API reference](docs/api/incident-service.md)
 - [Event contracts](docs/events/event-envelope.md)
@@ -374,9 +377,10 @@ local data/event-streaming platform (Phase 2), an incident-management
 service (Phase 3), a local observability baseline (Phase 4), a
 telemetry ingestion/correlation service (Phase 5), reliability/
 failure-recovery hardening (Phase 6), authentication/authorization/
-audit logging for the incident service (Phase 7), and a benchmark
-harness for the incident service (Phase 8 — built, not yet executed)
-exist.
+audit logging for the incident service (Phase 7), a benchmark
+harness for the incident service (Phase 8 — built, not yet executed),
+and CI/CD, backup/restore, and release-recovery tooling (Phase 9 —
+built, not yet executed) exist.
 No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
 frontend, or remediation execution described above are implemented yet.
 
