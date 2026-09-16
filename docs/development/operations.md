@@ -29,7 +29,7 @@ Re-verified by reading the actual repository, not assumed from prior phase repor
 | Build systems | Two independent Maven/Spring Boot 3 modules (`incident-service`, `telemetry-correlation-service`), Java 21, `spotless-maven-plugin` for formatting. | Added `spotbugs-maven-plugin` (static analysis) to both — see §2. |
 | Tests | Unit tests (JUnit/Mockito), Testcontainers-based integration tests (Postgres + Kafka-compatible broker), a real-Keycloak security-integration suite (Phase 7), Phase 8's k6 benchmark scenarios. All confirmed to compile; Docker-dependent ones could not be executed in this environment (see §11). | Added a migration-upgrade-path test (`MigrationUpgradePathTest`) and a `ProductionSafetyCheck` unit test (runs without Docker — see results in §11). |
 | CI | A single `ci.yml` (added in Phase 7, extended in Phase 8) with no concurrency control, no job timeouts, coarse permissions, no static analysis, no image build/scan/SBOM. | Hardened — see §2. |
-| DB migrations | Flyway, 7 versioned migrations, `ddl-auto: validate` (Hibernate never auto-modifies schema), `baseline-on-migrate: false`. All purely additive (`CREATE TABLE`/`CREATE INDEX` only — no `ALTER`/`DROP` anywhere). | Documented backward-compatibility (§4) and added the upgrade-path test. |
+| DB migrations | Flyway, 8 versioned migrations, `ddl-auto: validate` (Hibernate never auto-modifies schema), `baseline-on-migrate: false`. All purely additive (new tables/indexes, plus one nullable `ADD COLUMN` — no `DROP` or destructive `ALTER` anywhere). | Documented backward-compatibility (§4) and added the upgrade-path test. |
 | Docker images | Both Dockerfiles already multi-stage, non-root, `.dockerignore` present, container health checks present. Base images pinned to `eclipse-temurin:21-{jdk,jre}-jammy` (stable tags, not digest-pinned). | Left as-is (already sound) — added CI image-build/scan/SBOM jobs rather than rewriting working Dockerfiles. |
 | Env vars / config | `.env.example` already placeholder-only and well-commented. Startup-time `@Validated`/`@NotBlank` checks already existed on several property groups (Phase 7). No check rejected an *unsafe-but-present* value (e.g. the default password) in a declared-production environment. | Added `ProductionSafetyCheck` (§8). |
 | Health/observability | `/actuator/health(/readiness/liveness)`, Micrometer/Prometheus metrics, OpenTelemetry traces, ECS JSON logs — all pre-existing (Phases 3-6). | Reused as-is; no changes. |
@@ -84,7 +84,7 @@ report files today).
 ## 4. Database migration release-safety
 
 **Framework**: Flyway, `ddl-auto: validate` (Hibernate can never silently modify the schema — a
-mismatch between the entity model and the actual schema fails startup loudly instead), 7 versioned
+mismatch between the entity model and the actual schema fails startup loudly instead), 8 versioned
 migrations under `services/incident-service/src/main/resources/db/migration/`.
 
 **Migration backward-compatibility table** (every migration to date):
@@ -98,9 +98,10 @@ migrations under `services/incident-service/src/main/resources/db/migration/`.
 | V5 | `CREATE TABLE incidents.outbox_events` + indexes | Yes (new table) | No |
 | V6 | `CREATE TABLE incidents.processed_events` | Yes (new table) | No |
 | V7 | `CREATE TABLE incidents.idempotent_requests` | Yes (new table) | No |
+| V8 | `ALTER TABLE incidents.incidents ADD COLUMN assignee_id` (nullable) | Yes (nullable, additive column) | No |
 
-Every migration so far is purely additive (`CREATE TABLE`/`CREATE INDEX` only) — no `ALTER TABLE`,
-`DROP`, or column-type change has ever been introduced, so no migration to date has required a
+Every migration so far is purely additive (new tables/indexes, or a nullable `ADD COLUMN`) — no
+column rename, `DROP`, or column-type change has ever been introduced, so no migration to date has required a
 coordinated (old-code-must-not-run-against-new-schema, or vice versa) deployment. **The first
 migration that renames or drops a column, changes a column's type, or adds a `NOT NULL` column
 without a default will need the standard expand/contract pattern** (add the new shape additively

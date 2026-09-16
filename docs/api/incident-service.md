@@ -76,6 +76,30 @@ curl -s "http://localhost:8081/api/v1/incidents?status=DETECTED&severity=SEV2&pa
 Returns a single incident. `404 Not Found` (`errorCode: INCIDENT_NOT_FOUND`) if it doesn't
 exist; `400 Bad Request` (`errorCode: MALFORMED_REQUEST`) if `{id}` is not a valid UUID.
 
+### `GET /api/v1/incidents/summary` (Phase 10)
+
+Bounded dashboard aggregation for the operator console: total/open/unacknowledged counts plus
+counts by severity and by status, for the same optional filters as the list endpoint
+(`status`, `severity`, `affectedService`, `detectedFrom`, `detectedTo`, `assignee`,
+`unassigned`). Implemented as a small, fixed number of `COUNT(*)` queries — cost does not grow
+with the size of the incident table, and no incident row is ever loaded to compute it.
+
+```bash
+curl -s "http://localhost:8081/api/v1/incidents/summary"
+```
+
+### `PUT /api/v1/incidents/{id}/assignee` (Phase 10)
+
+Assigns (or, with `assigneeId: null`, unassigns) an incident to an operator, identified by their
+stable actor subject ID — never a display name, and never client-supplied as anything other than
+that ID. Independent of lifecycle status. Requires the RESPONDER or ADMIN role.
+
+```bash
+curl -s -X PUT http://localhost:8081/api/v1/incidents/{id}/assignee \
+  -H 'Content-Type: application/json' \
+  -d '{"assigneeId": "responder-demo"}'
+```
+
 ### `POST /api/v1/incidents/{id}/transitions`
 
 Transitions an incident to a new status. Only transitions allowed by the lifecycle (see

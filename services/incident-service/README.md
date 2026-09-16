@@ -44,9 +44,11 @@ always comes from the validated token's `sub` claim, never from a request field.
 | Action                                                        | VIEWER | RESPONDER | ADMIN |
 |-----------------------------------------------------------------|:------:|:---------:|:-----:|
 | `GET /api/v1/incidents`, `GET /api/v1/incidents/{id}`            |   ✅   |    ✅     |  ✅   |
+| `GET /api/v1/incidents/summary` (dashboard aggregation)          |   ✅   |    ✅     |  ✅   |
 | `GET /api/v1/incidents/{id}/timeline`                            |   ✅   |    ✅     |  ✅   |
 | `POST /api/v1/incidents` (create)                                |   ❌   |    ✅     |  ✅   |
 | `POST /api/v1/incidents/{id}/transitions`                        |   ❌   |    ✅     |  ✅   |
+| `PUT /api/v1/incidents/{id}/assignee` (assign/unassign)          |   ❌   |    ✅     |  ✅   |
 | `POST /api/v1/incidents/{id}/evidence`                           |   ❌   |    ✅     |  ✅   |
 | `GET /api/v1/incidents/{id}/audit-events` (per-incident audit)   |   ❌   |    ❌     |  ✅   |
 | `GET /api/v1/admin/audit-events` (global audit search)           |   ❌   |    ❌     |  ✅   |

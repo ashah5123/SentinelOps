@@ -156,3 +156,11 @@ infrastructure/docker/k6/results/*
 # =========================
 infrastructure/docker/backups/*
 !infrastructure/docker/backups/.gitkeep
+
+# =========================
+# Frontend (Phase 10)
+# =========================
+frontend/.env.local
+frontend/playwright-report/
+frontend/test-results/
+frontend/*.tsbuildinfo

@@ -19,6 +19,7 @@ public record IncidentResponse(
     Instant createdAt,
     Instant updatedAt,
     Instant resolvedAt,
+    String assigneeId,
     String correlationId,
     long version) {
 
@@ -36,6 +37,7 @@ public record IncidentResponse(
         incident.getCreatedAt(),
         incident.getUpdatedAt(),
         incident.getResolvedAt(),
+        incident.getAssigneeId(),
         incident.getCorrelationId(),
         incident.getVersion());
   }

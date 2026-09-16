@@ -14,9 +14,13 @@ a reproducible, local, k6-based performance-benchmarking harness
 for the incident service (Phase 8 — built but not yet executed), and
 hardened CI/CD, database migration release-safety, PostgreSQL backup/
 restore, data-integrity verification, and a documented release/
-rollback procedure (Phase 9 — built but not yet executed; see below).
+rollback procedure (Phase 9), and a React/TypeScript operator console
+(dashboard, incident queue, incident detail, admin recovery — Phase 10,
+`frontend/`) exist. Everything requiring Docker or a browser download
+across Phases 8-10 is built and statically validated but not yet
+executed in this authoring environment — see below.
 No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
-frontend, or remediation execution are implemented yet. See
+or remediation execution are implemented yet. See
 [docs/roadmap.md](docs/roadmap.md) for current phase status, including
 outstanding runtime-verification items.
 
@@ -195,6 +199,7 @@ with acceptance criteria. In summary:
 - [Authentication, authorization, and audit logging](docs/development/security.md)
 - [Performance testing and reproducible benchmarks](docs/development/performance.md)
 - [Production readiness, CI/CD, backup, and release recovery](docs/development/operations.md)
+- [Operator console](frontend/README.md)
 - [Incident-service README](services/incident-service/README.md)
 - [Incident-service API reference](docs/api/incident-service.md)
 - [Event contracts](docs/events/event-envelope.md)
@@ -370,6 +375,14 @@ stack** — see [`docs/benchmarks/phase-8-performance.md`](docs/benchmarks/phase
 for exactly why and what remains to run. Full guide:
 [`docs/development/performance.md`](docs/development/performance.md).
 
+## Operator console (Phase 10)
+
+A focused React + TypeScript + Vite frontend (`frontend/`) — dashboard, incident queue, incident
+detail workflow, and an ADMIN-only recovery view — authenticating via Authorization Code + PKCE
+against the same Keycloak realm the backend uses. Preserves every backend security/authorization
+guarantee (the backend remains authoritative; the UI only hides what a role can't do). See
+[`frontend/README.md`](frontend/README.md) for setup, demo-user roles, and known limitations.
+
 ## Project status
 
 **Foundation.** Repository scaffolding, architecture documentation, a
@@ -378,9 +391,10 @@ service (Phase 3), a local observability baseline (Phase 4), a
 telemetry ingestion/correlation service (Phase 5), reliability/
 failure-recovery hardening (Phase 6), authentication/authorization/
 audit logging for the incident service (Phase 7), a benchmark
-harness for the incident service (Phase 8 — built, not yet executed),
-and CI/CD, backup/restore, and release-recovery tooling (Phase 9 —
-built, not yet executed) exist.
+harness for the incident service (Phase 8), CI/CD, backup/restore, and
+release-recovery tooling (Phase 9), and a React/TypeScript operator
+console (Phase 10) exist — all built, with everything requiring Docker
+or a browser download not yet executed in this authoring environment.
 No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
 frontend, or remediation execution described above are implemented yet.
 

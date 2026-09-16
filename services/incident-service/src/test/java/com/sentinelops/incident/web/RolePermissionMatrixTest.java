@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +65,39 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void viewerCanReadTheDashboardSummary() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/incidents/summary").with(asRole("VIEWER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.total").isNumber());
+  }
+
+  @Test
+  void viewerCannotAssignIncidents() throws Exception {
+    String createResponse =
+        mockMvc
+            .perform(
+                post("/api/v1/incidents")
+                    .with(asRole("RESPONDER"))
+                    .header("Idempotency-Key", UUID.randomUUID().toString())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(createIncidentRequestJson("For assignment check")))
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String incidentId = objectMapper.readTree(createResponse).get("id").asText();
+
+    mockMvc
+        .perform(
+            put("/api/v1/incidents/" + incidentId + "/assignee")
+                .with(asRole("VIEWER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"assigneeId\":\"viewer-demo\"}"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
   void viewerCannotCreateIncidents() throws Exception {
     mockMvc
         .perform(
@@ -104,6 +138,41 @@ class RolePermissionMatrixTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(createIncidentRequestJson("Responder created")))
         .andExpect(status().isCreated());
+  }
+
+  @Test
+  void responderCanAssignAndUnassignAnIncident() throws Exception {
+    String createResponse =
+        mockMvc
+            .perform(
+                post("/api/v1/incidents")
+                    .with(asRole("RESPONDER"))
+                    .header("Idempotency-Key", UUID.randomUUID().toString())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(createIncidentRequestJson("For responder assignment")))
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String incidentId = objectMapper.readTree(createResponse).get("id").asText();
+
+    mockMvc
+        .perform(
+            put("/api/v1/incidents/" + incidentId + "/assignee")
+                .with(asRole("RESPONDER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"assigneeId\":\"responder-demo\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.assigneeId").value("responder-demo"));
+
+    mockMvc
+        .perform(
+            put("/api/v1/incidents/" + incidentId + "/assignee")
+                .with(asRole("RESPONDER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"assigneeId\":null}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.assigneeId").doesNotExist());
   }
 
   @Test

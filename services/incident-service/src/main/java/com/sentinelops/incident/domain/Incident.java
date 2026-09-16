@@ -70,6 +70,14 @@ public class Incident {
   @Column(name = "resolved_at")
   private Instant resolvedAt;
 
+  /**
+   * Stable subject ID (see {@code AuthenticatedActor}) of the operator currently assigned to this
+   * incident, or {@code null} if unassigned. Orthogonal to lifecycle status: assignment tracks "who
+   * is working this," not "what state is it in."
+   */
+  @Column(name = "assignee_id", length = 100)
+  private String assigneeId;
+
   @Column(name = "correlation_id", nullable = false, updatable = false, length = 64)
   private String correlationId;
 
@@ -147,6 +155,11 @@ public class Incident {
     }
   }
 
+  /** Assigns (or, with {@code null}, unassigns) this incident. Independent of lifecycle status. */
+  public void assignTo(String assigneeId) {
+    this.assigneeId = assigneeId;
+  }
+
   @PrePersist
   void onCreate() {
     Instant now = Instant.now();
@@ -205,6 +218,10 @@ public class Incident {
 
   public Instant getResolvedAt() {
     return resolvedAt;
+  }
+
+  public String getAssigneeId() {
+    return assigneeId;
   }
 
   public String getCorrelationId() {

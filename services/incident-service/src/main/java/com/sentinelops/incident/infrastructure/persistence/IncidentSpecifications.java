@@ -33,4 +33,13 @@ public final class IncidentSpecifications {
     return (root, query, cb) ->
         to == null ? null : cb.lessThanOrEqualTo(root.get("detectedAt"), to);
   }
+
+  public static Specification<Incident> assigneeIdEquals(String assigneeId) {
+    return (root, query, cb) ->
+        assigneeId == null ? null : cb.equal(root.get("assigneeId"), assigneeId);
+  }
+
+  public static Specification<Incident> unassigned(boolean unassignedOnly) {
+    return (root, query, cb) -> !unassignedOnly ? null : cb.isNull(root.get("assigneeId"));
+  }
 }

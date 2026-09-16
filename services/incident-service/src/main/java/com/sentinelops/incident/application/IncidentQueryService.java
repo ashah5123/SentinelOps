@@ -48,13 +48,65 @@ public class IncidentQueryService {
   }
 
   public Page<Incident> list(IncidentFilter filter, Pageable pageable) {
-    Specification<Incident> spec =
-        Specification.where(IncidentSpecifications.statusEquals(filter.status()))
-            .and(IncidentSpecifications.severityEquals(filter.severity()))
-            .and(IncidentSpecifications.affectedServiceEquals(filter.affectedService()))
-            .and(IncidentSpecifications.detectedAtFrom(filter.detectedFrom()))
-            .and(IncidentSpecifications.detectedAtTo(filter.detectedTo()));
+    Specification<Incident> spec = toSpecification(filter);
     return incidentRepository.findAll(spec, pageable);
+  }
+
+  private Specification<Incident> toSpecification(IncidentFilter filter) {
+    return Specification.where(IncidentSpecifications.statusEquals(filter.status()))
+        .and(IncidentSpecifications.severityEquals(filter.severity()))
+        .and(IncidentSpecifications.affectedServiceEquals(filter.affectedService()))
+        .and(IncidentSpecifications.detectedAtFrom(filter.detectedFrom()))
+        .and(IncidentSpecifications.detectedAtTo(filter.detectedTo()))
+        .and(IncidentSpecifications.assigneeIdEquals(filter.assigneeId()))
+        .and(IncidentSpecifications.unassigned(filter.unassignedOnly()));
+  }
+
+  /**
+   * A bounded dashboard aggregation: a small, fixed number of {@code COUNT(*)} queries (one per
+   * severity value, one per status value, plus total/open/unacknowledged) rather than loading any
+   * incident row into the JVM — cost stays constant regardless of how many incidents exist. Applies
+   * the same filter as {@link #list}, so a dashboard "filtered count" stays consistent with the
+   * queue view.
+   */
+  public IncidentSummary getSummary(IncidentFilter filter) {
+    Specification<Incident> spec = toSpecification(filter);
+
+    java.util.Map<String, Long> bySeverity = new java.util.LinkedHashMap<>();
+    for (com.sentinelops.incident.domain.IncidentSeverity severity :
+        com.sentinelops.incident.domain.IncidentSeverity.values()) {
+      long count =
+          incidentRepository.count(spec.and(IncidentSpecifications.severityEquals(severity)));
+      if (count > 0) {
+        bySeverity.put(severity.name(), count);
+      }
+    }
+
+    java.util.Map<String, Long> byStatus = new java.util.LinkedHashMap<>();
+    long open = 0;
+    for (com.sentinelops.incident.domain.IncidentStatus status :
+        com.sentinelops.incident.domain.IncidentStatus.values()) {
+      long count = incidentRepository.count(spec.and(IncidentSpecifications.statusEquals(status)));
+      if (count > 0) {
+        byStatus.put(status.name(), count);
+      }
+      boolean terminal =
+          status == com.sentinelops.incident.domain.IncidentStatus.RESOLVED
+              || status == com.sentinelops.incident.domain.IncidentStatus.FAILED;
+      if (!terminal) {
+        open += count;
+      }
+    }
+
+    long total = incidentRepository.count(spec);
+    long unacknowledged =
+        incidentRepository.count(
+            spec.and(
+                    IncidentSpecifications.statusEquals(
+                        com.sentinelops.incident.domain.IncidentStatus.DETECTED))
+                .and(IncidentSpecifications.unassigned(true)));
+
+    return new IncidentSummary(total, open, unacknowledged, bySeverity, byStatus);
   }
 
   public List<TimelineEntry> getTimeline(UUID incidentId) {

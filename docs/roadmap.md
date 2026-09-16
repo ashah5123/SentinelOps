@@ -363,7 +363,7 @@ one evidence-backed optimization if the evidence supports it — see
   `docs/development/performance.md` — before this Phase 8 (performance testing) is considered
   fully done.
 
-## Phase 9 (production readiness, CI/CD, backup, and release recovery) — current
+## Phase 9 (production readiness, CI/CD, backup, and release recovery)
 
 **Note on numbering:** like Phases 6-8 above, this is a cross-cutting hardening pass applied to
 the already-completed incident service (and, for static analysis, the telemetry-correlation
@@ -410,6 +410,54 @@ and auditable reporting"), which remains unstarted future work.
   both services' full non-Docker test suites, 70/70 and 49/49 passing respectively) but never
   executed end to end. This must be run — following the exact commands in
   `docs/development/operations.md` — before this Phase 9 is considered fully done.
+
+## Phase 10 (operator console and end-to-end incident workflows) — current
+
+**Note on numbering:** like Phases 6-9 above, this is a cross-cutting delivery of a real frontend
+for the already-completed incident service — tracked separately from the sequentially numbered
+"Phase 10" below ("Kubernetes packaging..."), which remains unstarted future work.
+
+**Goal:** A focused React/TypeScript/Vite operator console (dashboard, incident queue, incident
+detail, admin recovery) demonstrating SentinelOps end to end while preserving every existing
+security/reliability/audit guarantee — see `frontend/README.md`.
+
+**Acceptance criteria:**
+- [x] Authentication via Authorization Code + PKCE (`react-oidc-context`/`oidc-client-ts`, a
+  maintained library — no hand-rolled token handling), a new dedicated Keycloak public client
+  (`sentinelops-frontend`), tokens in `sessionStorage` only (never `localStorage`), return-to-route
+  after login, and a distinct session-expired state.
+- [x] Two small, secure backend additions (audited by this phase's own audit-first step, not
+  invented speculatively): `assignee_id` on incidents (migration V8, nullable/additive — see
+  `docs/development/operations.md`'s migration table) with a `PUT .../assignee` endpoint
+  (RESPONDER/ADMIN), and a bounded `GET .../summary` dashboard-aggregation endpoint (fixed number
+  of `COUNT(*)` queries regardless of table size — never loads incident rows to compute it).
+- [x] Dashboard, incident queue (server-side pagination/sorting-allowlist/filtering/URL-backed
+  filters/debounced search/stale-request guarding), incident detail (role-gated actions,
+  confirmation for consequential transitions, duplicate-submission prevention, explicit
+  stale/conflict handling), and an administrative recovery view scoped to what the backend
+  actually exposes (topic-level dead-letter replay — no invented per-event listing endpoint).
+- [x] Bounded polling with exponential backoff + jitter in place of a real-time subsystem (no
+  SSE/WebSocket endpoint exists in the backend).
+- [x] Accessibility: semantic structure, visible focus states, skip link, ARIA live region for
+  async announcements, focus-trapped confirmation dialogs, reduced-motion support, an error
+  boundary, and automated axe-core checks (unexecuted here — see below).
+- [x] Vitest/RTL unit and component tests (32 passing — role gating, filter serialization,
+  loading/empty/error states, session expiration, duplicate-submission prevention, stale-response
+  handling) and Playwright E2E specs covering all nine required scenarios (written, statically
+  valid, unexecuted — see below).
+- [x] CI: a bounded `frontend` job (lint/format/typecheck/unit tests/build) on every push/PR, and
+  an opt-in `frontend-e2e-smoke` job (`workflow_dispatch`) for a single authenticated Playwright
+  scenario against the real stack.
+- [ ] Actual execution of anything requiring Docker or a browser download (Playwright specs, the
+  `frontend-e2e-smoke`/`benchmark-*` CI jobs, a live demo walkthrough) — **blocked**: Docker
+  remains unavailable in this environment, and Playwright's browser binaries were deliberately not
+  installed after this phase's authoring session hit a real, severe low-disk-space incident
+  (an OOM-crashed Vitest run briefly drove free space to ~339Mi before a safe `npm cache clean`
+  recovered ~4.1Gi) — installing another few hundred MB of browser binaries for tests that could
+  not reach a live backend anyway was not a reasonable tradeoff. Everything else — frontend
+  lint/typecheck/build/unit-tests, and every backend check — **was** actually run; see the phase
+  completion report for exact commands and results. This must be executed once Docker is
+  available before this Phase 10 is considered fully done.
 
 ## Phase 6 — Detection engine
 

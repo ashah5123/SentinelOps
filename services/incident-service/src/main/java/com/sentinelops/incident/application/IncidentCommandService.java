@@ -231,6 +231,30 @@ public class IncidentCommandService {
     return evidence;
   }
 
+  /**
+   * Assigns (or, with {@code assigneeId == null}, unassigns) an incident. Independent of lifecycle
+   * status — assignment tracks who is working an incident, not what state it is in.
+   */
+  @Transactional
+  public Incident assign(UUID incidentId, String assigneeId, String correlationId, String actorId) {
+    Incident incident = getIncidentOrThrow(incidentId);
+    String previousAssignee = incident.getAssigneeId();
+    incident.assignTo(assigneeId);
+    incidentRepository.save(incident);
+
+    auditRecorder.record(
+        incidentId,
+        assigneeId == null ? "INCIDENT_UNASSIGNED" : "INCIDENT_ASSIGNED",
+        ActorType.LOCAL_USER,
+        actorId,
+        correlationId,
+        Map.of(
+            "previousAssignee", previousAssignee == null ? "none" : previousAssignee,
+            "newAssignee", assigneeId == null ? "none" : assigneeId));
+
+    return incident;
+  }
+
   private Incident getIncidentOrThrow(UUID incidentId) {
     return incidentRepository
         .findById(incidentId)

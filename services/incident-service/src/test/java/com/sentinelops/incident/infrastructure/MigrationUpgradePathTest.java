@@ -61,10 +61,10 @@ class MigrationUpgradePathTest {
 
   /**
    * The "previous schema" version this test upgrades from — one less than the current latest
-   * migration (V7). Update this alongside adding a new highest-numbered migration, so this test
+   * migration (V8). Update this alongside adding a new highest-numbered migration, so this test
    * keeps exercising "the current previous schema -> current schema" rather than a stale pair.
    */
-  private static final String PREVIOUS_SCHEMA_VERSION = "6";
+  private static final String PREVIOUS_SCHEMA_VERSION = "7";
 
   private Flyway flywayTargetingSchemaVersion(String target) {
     return Flyway.configure()
@@ -114,15 +114,15 @@ class MigrationUpgradePathTest {
       appConn.commit();
     }
 
-    // 3. Upgrade through the migration path to the current latest version (V7).
+    // 3. Upgrade through the migration path to the current latest version (V8).
     Flyway toLatest =
         flywayTargetingSchemaVersion(org.flywaydb.core.api.MigrationVersion.LATEST.getVersion());
     toLatest.migrate();
     assertThat(toLatest.info().current()).isNotNull();
 
     // 4. Verify the application (as its own non-superuser role) can still read the data inserted
-    // under the previous schema, and can write through the newly added table (idempotent_requests,
-    // added by V7) without any special-casing.
+    // under the previous schema, and can write through the column the new migration introduced
+    // (assignee_id, added by V8) without any special-casing.
     try (Connection appConn = appConnection()) {
       try (Statement stmt = appConn.createStatement();
           ResultSet rs =
@@ -149,19 +149,18 @@ class MigrationUpgradePathTest {
 
       try (Statement stmt = appConn.createStatement()) {
         stmt.execute(
-            "INSERT INTO incidents.idempotent_requests (idempotency_key, request_hash, "
-                + "response_status, response_body, created_at) VALUES "
-                + "('migration-upgrade-test-key', 'hash', 200, '{}'::jsonb, now())");
+            "UPDATE incidents.incidents SET assignee_id = 'responder-demo' WHERE id = '"
+                + incidentId
+                + "'");
       }
       try (Statement stmt = appConn.createStatement();
           ResultSet rs =
               stmt.executeQuery(
-                  "SELECT count(*) FROM incidents.idempotent_requests WHERE idempotency_key = "
-                      + "'migration-upgrade-test-key'")) {
+                  "SELECT assignee_id FROM incidents.incidents WHERE id = '" + incidentId + "'")) {
         rs.next();
-        assertThat(rs.getInt(1))
-            .as("the application can write through the table the new migration introduced")
-            .isEqualTo(1);
+        assertThat(rs.getString("assignee_id"))
+            .as("the application can write through the column the new migration introduced")
+            .isEqualTo("responder-demo");
       }
     }
   }
