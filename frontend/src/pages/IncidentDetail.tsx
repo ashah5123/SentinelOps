@@ -14,6 +14,7 @@ import { SeverityBadge } from "../components/SeverityBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { AiAssistancePanel } from "../components/AiAssistancePanel";
+import { AlertContextPanel } from "../components/AlertContextPanel";
 import { useAnnounce } from "../components/Announcer";
 import { useAuth } from "../auth/AuthProvider";
 import { hasAnyRole, hasRole } from "../lib/roles";
@@ -258,6 +259,8 @@ export function IncidentDetail() {
                 )}
               </AsyncBoundary>
             </section>
+
+            <AlertContextPanel incidentId={id!} canSeeEscalations={canReadAudit} />
 
             <AiAssistancePanel
               incidentId={id!}

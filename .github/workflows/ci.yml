@@ -102,7 +102,26 @@ jobs:
       # any paid API. A live-model evaluation against a real Ollama instance is intentionally not
       # part of this job (see docs/development/ai-triage.md's evaluation section) — it requires a
       # locally running model and is opt-in/manual only, never a CI gate.
-      - name: mvnw verify (unit, security, reliability/idempotency, migration, and AI-triage tests)
+      #
+      # Phase 12 (alert ingestion/correlation/routing/notification): the
+      # com.sentinelops.incident.alerts.** unit tests also run here automatically — Alertmanager
+      # payload mapping, HMAC signing/verification (including replay-window and constant-time
+      # comparison), fingerprinting, deduplication logic, correlation rules, routing rules
+      # (including startup config validation), notification rendering, and escalation-cancellation
+      # eligibility are all plain JUnit/Mockito tests needing no database, Kafka, or external
+      # service. AlertsPropertiesBindingTest additionally loads the real shipped application.yml
+      # to catch YAML-nesting mistakes under sentinelops.alerts.* before they reach production.
+      #
+      # Phase 13 (secure MCP server / approval-gated agent operations): the
+      # com.sentinelops.incident.mcp.** and com.sentinelops.incident.proposal.** unit tests also
+      # run here automatically — MCP scope mapping, token validation (issuer/audience/signature
+      # reuse of the existing JwtDecoder), proposal validation/idempotency/rate-limiting, and
+      # approval-service safety properties (self-approval rejection, admin-only dead-letter
+      # replay, expiration, content-hash re-verification, stale-incident-version detection, and
+      # approval-replay rejection) are all plain JUnit/Mockito tests — no MCP client, network
+      # transport, GPU, or paid model is required. McpPropertiesBindingTest loads the real shipped
+      # application.yml the same way AlertsPropertiesBindingTest does.
+      - name: mvnw verify (unit, security, reliability/idempotency, migration, AI-triage, alert-ingestion, and MCP/proposal tests)
         working-directory: services/incident-service
         run: ./mvnw -B verify
 

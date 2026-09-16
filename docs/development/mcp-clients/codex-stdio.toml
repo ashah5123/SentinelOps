@@ -1,0 +1,19 @@
+# Example Codex-style MCP client configuration for the SentinelOps stdio transport.
+# Placeholders only — replace the executable path and obtain a real token per
+# docs/development/mcp-server.md's stdio section. Never commit a real token or a
+# machine-specific absolute path.
+
+[mcp_servers.sentinelops]
+# A Spring Boot repackaged jar needs PropertiesLauncher + -Dloader.main to run a class other
+# than the application's own main() — a plain "java -cp app.jar <class>" will not work, since
+# application classes live under BOOT-INF/classes/, not the jar root.
+command = "java"
+args = [
+  "-Dloader.main=com.sentinelops.incident.mcp.transport.McpStdioLauncher",
+  "-cp",
+  "/absolute/path/to/SentinelOps/services/incident-service/target/incident-service.jar",
+  "org.springframework.boot.loader.launch.PropertiesLauncher",
+]
+
+[mcp_servers.sentinelops.env]
+MCP_STDIO_ACCESS_TOKEN = "<paste a short-lived access token here>"

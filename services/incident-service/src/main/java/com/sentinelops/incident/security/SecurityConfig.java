@@ -78,8 +78,29 @@ public class SecurityConfig {
     return new InMemoryUserDetailsManager(metricsUser);
   }
 
+  /**
+   * Phase 12: alert-connector webhooks (Alertmanager, the generic HMAC-signed connector)
+   * authenticate themselves — a static shared bearer token or an HMAC signature, verified inside
+   * the controller/verifier, never a JWT — so this chain permits every request through Spring
+   * Security itself and lets the controller reject unauthenticated ones with 401. This never
+   * weakens the interactive JWT chain below: it is scoped to exactly {@code
+   * /api/v1/alerts/webhooks/**} via {@code securityMatcher}, so no other endpoint is affected.
+   */
   @Bean
   @Order(Ordered.HIGHEST_PRECEDENCE + 1)
+  public SecurityFilterChain alertWebhookFilterChain(HttpSecurity http) throws Exception {
+    http.securityMatcher("/api/v1/alerts/webhooks/**")
+        .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+        .csrf(AbstractHttpConfigurer::disable)
+        .sessionManagement(
+            session ->
+                session.sessionCreationPolicy(
+                    org.springframework.security.config.http.SessionCreationPolicy.STATELESS));
+    return http.build();
+  }
+
+  @Bean
+  @Order(Ordered.HIGHEST_PRECEDENCE + 3)
   public SecurityFilterChain apiFilterChain(
       HttpSecurity http,
       JwtAuthenticationConverter jwtAuthenticationConverter,

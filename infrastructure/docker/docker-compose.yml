@@ -251,6 +251,51 @@ services:
     networks: [sentinelops-net]
     restart: "no"
 
+  # Phase 12 local notification demonstration channels — both fully local, no external delivery.
+  mailpit:
+    image: axllent/mailpit:v1.20.3
+    container_name: sentinelops-mailpit
+    profiles: ["app"]
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8025/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+    networks: [sentinelops-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 128M
+
+  webhook-sink:
+    image: python:3.12-alpine
+    container_name: sentinelops-webhook-sink
+    profiles: ["app"]
+    volumes:
+      - ./webhook-sink/server.py:/server.py:ro
+    command: ["python3", "/server.py"]
+    ports:
+      - "127.0.0.1:${WEBHOOK_SINK_PORT:-9099}:9099"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9099/received', timeout=2)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+    networks: [sentinelops-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 64M
+
   incident-service:
     build:
       context: ../../services/incident-service
@@ -266,6 +311,10 @@ services:
       redpanda-topics-init:
         condition: service_completed_successfully
       keycloak:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      webhook-sink:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -291,6 +340,19 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       ACTUATOR_METRICS_USERNAME: ${ACTUATOR_METRICS_USERNAME:-metrics}
       ACTUATOR_METRICS_PASSWORD: ${ACTUATOR_METRICS_PASSWORD:-change-me-local-dev-only}
+      # Phase 12: alert ingestion, notification, and connector security. Reached over the
+      # internal Compose network by container name, not the host-published ports above.
+      MAILPIT_HOST: mailpit
+      MAILPIT_SMTP_PORT: 1025
+      ALERTS_WEBHOOK_SINK_URL: http://webhook-sink:9099/webhook-sink
+      ALERTS_NOTIFICATION_EMAIL_FROM: ${ALERTS_NOTIFICATION_EMAIL_FROM:-alerts@sentinelops.local}
+      ALERTS_NOTIFICATION_EMAIL_TO: ${ALERTS_NOTIFICATION_EMAIL_TO:-oncall@sentinelops.local}
+      ALERTS_INCIDENT_LINK_BASE_URL: ${ALERTS_INCIDENT_LINK_BASE_URL:-http://localhost:5173}
+      ALERTS_ALERTMANAGER_SHARED_TOKEN: ${ALERTS_ALERTMANAGER_SHARED_TOKEN:-change-me-local-dev-only}
+      ALERTS_WEBHOOK_HMAC_CURRENT_SECRET_ID: ${ALERTS_WEBHOOK_HMAC_CURRENT_SECRET_ID:-current}
+      ALERTS_WEBHOOK_HMAC_CURRENT_SECRET: ${ALERTS_WEBHOOK_HMAC_CURRENT_SECRET:-change-me-local-dev-only}
+      ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET_ID: ${ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET_ID:-}
+      ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET: ${ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET:-}
     ports:
       - "127.0.0.1:${INCIDENT_SERVICE_PORT:-8081}:8081"
     networks: [sentinelops-net]

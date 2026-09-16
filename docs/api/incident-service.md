@@ -153,8 +153,8 @@ curl -s "http://localhost:8081/api/v1/admin/audit-events?action=INCIDENT_CREATED
 Replays up to `maxRecords` (default 20, max 100) eligible dead-lettered records from `{topic}`
 back to its original topic, unchanged (same key, value, and event ID — so the target topic's own
 idempotent-consumption check still applies). Only the dead-letter topics this service itself
-consumes from are eligible: `telemetry.anomaly.v1.dlq` and
-`incident.evidence.correlated.v1.dlq`. An ineligible topic returns `400 Bad Request`
+consumes from are eligible: `telemetry.anomaly.v1.dlq`, `incident.evidence.correlated.v1.dlq`,
+and `alert.ingested.v1.dlq`. An ineligible topic returns `400 Bad Request`
 (`errorCode: DEAD_LETTER_TOPIC_NOT_ELIGIBLE`). See
 [`docs/development/reliability.md`](../development/reliability.md) for the underlying dead-letter
 mechanism this endpoint automates.
@@ -163,6 +163,17 @@ mechanism this endpoint automates.
 curl -s -X POST "http://localhost:8081/api/v1/admin/dead-letter-topics/telemetry.anomaly.v1.dlq/replay?maxRecords=10" \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
+
+### Alert ingestion, AI triage, and connector health (Phase 11/12)
+
+The `POST /api/v1/incidents/{id}/ai-suggestions` family (Phase 11), the
+`POST /api/v1/alerts/webhooks/alertmanager` and `POST /api/v1/alerts/webhooks/generic/v1`
+connectors, the `GET /api/v1/incidents/{id}/{alerts,alert-correlations,notifications,escalations}`
+read endpoints, and the `GET /api/v1/admin/alerts/connectors` (ADMIN only) connector-health
+endpoint are documented in full in
+[`docs/development/alert-ingestion.md`](../development/alert-ingestion.md) and
+[`docs/development/ai-triage.md`](../development/ai-triage.md) rather than duplicated here — see
+those for exact request/response shapes, authentication, and examples.
 
 ## Authentication and authorization errors
 

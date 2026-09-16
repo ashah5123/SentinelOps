@@ -52,7 +52,8 @@ class IncidentCommandServiceAssignmentTest {
             auditRecorder,
             outboxWriter,
             incidentMetrics,
-            mock(Spans.class));
+            mock(Spans.class),
+            mock(org.springframework.context.ApplicationEventPublisher.class));
 
     incidentId = UUID.randomUUID();
     incident =

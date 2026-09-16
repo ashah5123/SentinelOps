@@ -6,6 +6,9 @@ import com.sentinelops.incident.application.DeadLetterReplayService.IneligibleDe
 import com.sentinelops.incident.application.IdempotencyConflictException;
 import com.sentinelops.incident.application.IncidentNotFoundException;
 import com.sentinelops.incident.domain.IllegalIncidentTransitionException;
+import com.sentinelops.incident.proposal.ProposalConflictException;
+import com.sentinelops.incident.proposal.ProposalNotFoundException;
+import com.sentinelops.incident.proposal.ProposalValidationException;
 import com.sentinelops.incident.security.RestAccessDeniedHandler;
 import com.sentinelops.incident.security.RestAuthenticationEntryPoint;
 import jakarta.servlet.http.HttpServletRequest;
@@ -111,6 +114,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return org.springframework.http.ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
         .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, e.retryAfter().toSeconds())))
         .body(problem);
+  }
+
+  @ExceptionHandler(ProposalNotFoundException.class)
+  public ProblemDetail handleProposalNotFound(
+      ProposalNotFoundException e, HttpServletRequest request) {
+    return build(HttpStatus.NOT_FOUND, ErrorCode.PROPOSAL_NOT_FOUND, e.getMessage(), request);
+  }
+
+  @ExceptionHandler(ProposalConflictException.class)
+  public ProblemDetail handleProposalConflict(
+      ProposalConflictException e, HttpServletRequest request) {
+    ProblemDetail problem =
+        build(HttpStatus.CONFLICT, ErrorCode.PROPOSAL_CONFLICT, e.getMessage(), request);
+    problem.setProperty("reasonCode", e.reasonCode());
+    return problem;
+  }
+
+  @ExceptionHandler(ProposalValidationException.class)
+  public ProblemDetail handleProposalValidation(
+      ProposalValidationException e, HttpServletRequest request) {
+    return build(
+        HttpStatus.BAD_REQUEST, ErrorCode.PROPOSAL_VALIDATION_ERROR, e.getMessage(), request);
   }
 
   @ExceptionHandler(IdempotencyConflictException.class)

@@ -14,8 +14,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE SCHEMA IF NOT EXISTS incidents AUTHORIZATION ${POSTGRES_USER};
     CREATE SCHEMA IF NOT EXISTS audit AUTHORIZATION ${POSTGRES_USER};
     CREATE SCHEMA IF NOT EXISTS runbooks AUTHORIZATION ${POSTGRES_USER};
+    CREATE SCHEMA IF NOT EXISTS alerts AUTHORIZATION ${POSTGRES_USER};
 
-    GRANT USAGE ON SCHEMA incidents, audit, runbooks TO ${POSTGRES_APP_USER};
+    GRANT USAGE ON SCHEMA incidents, audit, runbooks, alerts TO ${POSTGRES_APP_USER};
 
     ALTER DEFAULT PRIVILEGES IN SCHEMA incidents
         GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${POSTGRES_APP_USER};
@@ -23,6 +24,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         GRANT SELECT, INSERT ON TABLES TO ${POSTGRES_APP_USER};
     ALTER DEFAULT PRIVILEGES IN SCHEMA runbooks
         GRANT SELECT, INSERT, UPDATE ON TABLES TO ${POSTGRES_APP_USER};
+    -- Phase 12: operational alert/notification/escalation state, not an audit trail — full CRUD
+    -- like "incidents" (e.g. escalations are cancelled in place, notification retry counters are
+    -- updated), unlike the append-only "audit" schema.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA alerts
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${POSTGRES_APP_USER};
 EOSQL
 
-echo "SentinelOps: schemas 'incidents', 'audit', 'runbooks' are ready."
+echo "SentinelOps: schemas 'incidents', 'audit', 'runbooks', 'alerts' are ready."

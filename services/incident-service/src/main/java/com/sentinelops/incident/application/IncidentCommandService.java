@@ -15,6 +15,7 @@ import com.sentinelops.incident.observability.IncidentMetrics;
 import com.sentinelops.incident.observability.Spans;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,7 @@ public class IncidentCommandService {
   private final OutboxWriter outboxWriter;
   private final IncidentMetrics incidentMetrics;
   private final Spans spans;
+  private final ApplicationEventPublisher eventPublisher;
 
   public IncidentCommandService(
       IncidentRepository incidentRepository,
@@ -46,7 +48,8 @@ public class IncidentCommandService {
       AuditRecorder auditRecorder,
       OutboxWriter outboxWriter,
       IncidentMetrics incidentMetrics,
-      Spans spans) {
+      Spans spans,
+      ApplicationEventPublisher eventPublisher) {
     this.incidentRepository = incidentRepository;
     this.statusHistoryRepository = statusHistoryRepository;
     this.evidenceRepository = evidenceRepository;
@@ -55,6 +58,7 @@ public class IncidentCommandService {
     this.outboxWriter = outboxWriter;
     this.incidentMetrics = incidentMetrics;
     this.spans = spans;
+    this.eventPublisher = eventPublisher;
   }
 
   @Transactional
@@ -160,6 +164,8 @@ public class IncidentCommandService {
               Map.of("from", previousStatus.name(), "to", newStatus.name()));
 
           incidentMetrics.incidentTransitioned(previousStatus.name(), newStatus.name());
+          eventPublisher.publishEvent(
+              new IncidentTransitionedEvent(incidentId, previousStatus, newStatus, correlationId));
           return incident;
         });
   }

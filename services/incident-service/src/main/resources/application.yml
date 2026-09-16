@@ -12,6 +12,17 @@ spring:
     name: incident-service
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  # Local-only SMTP sink (Mailpit — see docker-compose's "mailpit" service): no real email is
+  # ever sent, and no authentication/TLS is configured because Mailpit accepts plain local SMTP.
+  mail:
+    host: ${MAILPIT_HOST:localhost}
+    port: ${MAILPIT_SMTP_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:sentinelops}
     username: ${POSTGRES_APP_USER:sentinelops_app}
@@ -33,7 +44,7 @@ spring:
         format_sql: false
   flyway:
     enabled: true
-    schemas: incidents,audit,runbooks
+    schemas: incidents,audit,runbooks,alerts
     default-schema: incidents
     locations: classpath:db/migration
     baseline-on-migrate: false
@@ -91,6 +102,11 @@ sentinelops:
       retry-max-interval: ${ANOMALY_CONSUMER_RETRY_MAX_INTERVAL:30s}
       retry-multiplier: ${ANOMALY_CONSUMER_RETRY_MULTIPLIER:2.0}
       retry-jitter: ${ANOMALY_CONSUMER_RETRY_JITTER:0.2}
+      # How long a processed-event idempotency record is kept before cleanup. Must comfortably
+      # exceed the broker's topic retention (see REDPANDA_TOPIC_RETENTION_MS) so a message that
+      # is somehow redelivered after a long delay is still recognized as a duplicate.
+      processed-event-retention: ${ANOMALY_CONSUMER_PROCESSED_EVENT_RETENTION:8d}
+      processed-event-cleanup-interval: ${ANOMALY_CONSUMER_PROCESSED_EVENT_CLEANUP_INTERVAL:1h}
   # AI-assisted incident triage (Phase 11). Disabled by default: this is an optional, human-
   # reviewed assistance feature, never required for the core application. See
   # docs/development/ai-triage.md.
@@ -117,11 +133,109 @@ sentinelops:
       max-description-chars: ${AI_PROMPT_MAX_DESCRIPTION_CHARS:4000}
       max-passage-chars: ${AI_PROMPT_MAX_PASSAGE_CHARS:1500}
       template-version: v1
-      # How long a processed-event idempotency record is kept before cleanup. Must comfortably
-      # exceed the broker's topic retention (see REDPANDA_TOPIC_RETENTION_MS) so a message that
-      # is somehow redelivered after a long delay is still recognized as a duplicate.
-      processed-event-retention: ${ANOMALY_CONSUMER_PROCESSED_EVENT_RETENTION:8d}
-      processed-event-cleanup-interval: ${ANOMALY_CONSUMER_PROCESSED_EVENT_CLEANUP_INTERVAL:1h}
+  # External alert ingestion, deduplication, correlation, routing, notification, and escalation
+  # (Phase 12). See docs/development/alert-ingestion.md.
+  alerts:
+    ingestion:
+      max-labels: ${ALERTS_MAX_LABELS:50}
+      max-annotations: ${ALERTS_MAX_ANNOTATIONS:50}
+      max-label-key-length: ${ALERTS_MAX_LABEL_KEY_LENGTH:100}
+      max-label-value-length: ${ALERTS_MAX_LABEL_VALUE_LENGTH:500}
+      max-alert-name-length: ${ALERTS_MAX_ALERT_NAME_LENGTH:200}
+      max-summary-length: ${ALERTS_MAX_SUMMARY_LENGTH:500}
+      max-description-length: ${ALERTS_MAX_DESCRIPTION_LENGTH:2000}
+      max-payload-bytes: ${ALERTS_MAX_PAYLOAD_BYTES:1048576}
+      max-future-skew: ${ALERTS_MAX_FUTURE_SKEW:5m}
+      max-past-age: ${ALERTS_MAX_PAST_AGE:30d}
+      supported-schema-versions: [1]
+    hmac:
+      # Never checked into source control with a real value — see .env.example.
+      current-secret-id: ${ALERTS_WEBHOOK_HMAC_CURRENT_SECRET_ID:current}
+      current-secret: ${ALERTS_WEBHOOK_HMAC_CURRENT_SECRET:change-me-local-dev-only}
+      previous-secret-id: ${ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET_ID:}
+      previous-secret: ${ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET:}
+      replay-window: ${ALERTS_WEBHOOK_HMAC_REPLAY_WINDOW:5m}
+    alertmanager:
+      shared-token: ${ALERTS_ALERTMANAGER_SHARED_TOKEN:change-me-local-dev-only}
+    rate-limit:
+      max-requests-per-window: ${ALERTS_RATE_LIMIT_MAX_REQUESTS:100}
+      window: ${ALERTS_RATE_LIMIT_WINDOW:1m}
+    correlation:
+      window: ${ALERTS_CORRELATION_WINDOW:30m}
+      max-candidates: ${ALERTS_CORRELATION_MAX_CANDIDATES:50}
+    notification:
+      incident-link-base-url: ${ALERTS_INCIDENT_LINK_BASE_URL:http://localhost:5173}
+      webhook-sink-url: ${ALERTS_WEBHOOK_SINK_URL:}
+      email-from: ${ALERTS_NOTIFICATION_EMAIL_FROM:}
+      email-to: ${ALERTS_NOTIFICATION_EMAIL_TO:}
+      max-attempts: ${ALERTS_NOTIFICATION_MAX_ATTEMPTS:6}
+      initial-backoff: ${ALERTS_NOTIFICATION_INITIAL_BACKOFF:2s}
+      max-backoff: ${ALERTS_NOTIFICATION_MAX_BACKOFF:2m}
+      backoff-jitter: ${ALERTS_NOTIFICATION_BACKOFF_JITTER:0.2}
+      polling-interval: ${ALERTS_NOTIFICATION_POLLING_INTERVAL:2s}
+      batch-size: ${ALERTS_NOTIFICATION_BATCH_SIZE:20}
+    escalation:
+      polling-interval: ${ALERTS_ESCALATION_POLLING_INTERVAL:15s}
+      batch-size: ${ALERTS_ESCALATION_BATCH_SIZE:20}
+    routing:
+      rules:
+        - id: sev1-immediate
+          version: 1
+          severity: SEV1
+          route:
+            team: platform-oncall
+            channels: [EMAIL, WEBHOOK, IN_APP]
+            escalation-delay: 5m
+            queue-ai-triage: true
+            suppress: false
+        - id: sev2-standard
+          version: 1
+          severity: SEV2
+          route:
+            team: platform-oncall
+            channels: [WEBHOOK, IN_APP]
+            escalation-delay: 15m
+            queue-ai-triage: true
+            suppress: false
+        - id: low-severity-in-app-only
+          version: 1
+          severity: SEV4
+          route:
+            team: platform-team
+            channels: [IN_APP]
+            escalation-delay: 0s
+            queue-ai-triage: false
+            suppress: false
+      default-route:
+        team: unassigned
+        channels: [IN_APP]
+        escalation-delay: 0s
+        queue-ai-triage: false
+        suppress: false
+      business-hours:
+        zone-id: ${ALERTS_BUSINESS_HOURS_ZONE:UTC}
+        start-hour: 9
+        end-hour: 17
+  # Secure MCP server (Phase 13). Network transport is disabled by default — see
+  # docs/development/mcp-server.md's "how to disable MCP network access" section. The stdio
+  # transport (see McpStdioLauncher) is a separate process, launched explicitly, and is
+  # unaffected by this flag.
+  mcp:
+    network-transport-enabled: ${MCP_NETWORK_TRANSPORT_ENABLED:false}
+    endpoint-path: ${MCP_ENDPOINT_PATH:/mcp}
+    max-page-size: ${MCP_MAX_PAGE_SIZE:50}
+    max-search-results: ${MCP_MAX_SEARCH_RESULTS:10}
+    max-response-bytes: ${MCP_MAX_RESPONSE_BYTES:1048576}
+    tool-timeout: ${MCP_TOOL_TIMEOUT:10s}
+    rate-limit:
+      max-requests-per-window: ${MCP_RATE_LIMIT_MAX_REQUESTS:60}
+      window: ${MCP_RATE_LIMIT_WINDOW:1m}
+      max-concurrent-tool-calls-per-actor: ${MCP_MAX_CONCURRENT_TOOL_CALLS:4}
+  # Agent-proposal rate limiting (Phase 13, section 11) — applies to both MCP-created and
+  # console-created proposals.
+  proposals:
+    max-per-actor-per-window: ${PROPOSALS_MAX_PER_ACTOR:10}
+    window: ${PROPOSALS_WINDOW:10m}
 
 management:
   endpoints:

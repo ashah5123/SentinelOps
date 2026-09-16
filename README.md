@@ -200,6 +200,8 @@ with acceptance criteria. In summary:
 - [Performance testing and reproducible benchmarks](docs/development/performance.md)
 - [Production readiness, CI/CD, backup, and release recovery](docs/development/operations.md)
 - [AI-assisted incident triage](docs/development/ai-triage.md)
+- [Alert ingestion, correlation, routing, and notifications](docs/development/alert-ingestion.md)
+- [Secure MCP server and approval-gated agent operations](docs/development/mcp-server.md)
 - [Operator console](frontend/README.md)
 - [Incident-service README](services/incident-service/README.md)
 - [Incident-service API reference](docs/api/incident-service.md)

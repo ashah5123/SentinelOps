@@ -28,6 +28,7 @@
     <otel.instrumentation.version>2.10.0-alpha</otel.instrumentation.version>
     <datasource-micrometer.version>1.0.5</datasource-micrometer.version>
     <pgvector.version>0.1.6</pgvector.version>
+    <mcp-sdk.version>0.18.4</mcp-sdk.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -52,6 +53,26 @@
     <dependency>
       <groupId>org.springframework.kafka</groupId>
       <artifactId>spring-kafka</artifactId>
+    </dependency>
+    <!-- Phase 12: local email notification delivery via Mailpit (see docker-compose's "mailpit"
+         service) — never a paid/external mail provider. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+    <!-- Phase 13: the official Java MCP SDK (Anthropic/modelcontextprotocol, MIT licensed).
+         Pinned to 0.18.4 deliberately rather than the newer 2.x line: 2.x split the Spring
+         integration modules (mcp-spring-webmvc/webflux) out of lockstep with mcp-core's own
+         versioning, and 0.18.4 is the last release where core + Spring servlet transport are
+         known mutually compatible. We use the plain servlet transport
+         (HttpServletStreamableServerTransportProvider, part of mcp-core) registered directly as
+         a Spring Boot ServletRegistrationBean rather than depending on mcp-spring-webmvc at all,
+         so this single artifact (which transitively pulls mcp-core + mcp-json-jackson2) is
+         sufficient — see docs/development/mcp-server.md. -->
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId>
+      <artifactId>mcp</artifactId>
+      <version>${mcp-sdk.version}</version>
     </dependency>
 
     <!-- Authentication/authorization (Phase 7): OAuth2 resource server validating Keycloak-issued

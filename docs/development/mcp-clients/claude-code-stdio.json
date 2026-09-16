@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "sentinelops": {
+      "command": "java",
+      "args": [
+        "-Dloader.main=com.sentinelops.incident.mcp.transport.McpStdioLauncher",
+        "-cp",
+        "/absolute/path/to/SentinelOps/services/incident-service/target/incident-service.jar",
+        "org.springframework.boot.loader.launch.PropertiesLauncher"
+      ],
+      "env": {
+        "MCP_STDIO_ACCESS_TOKEN": "<paste a short-lived access token here — never commit a real one>"
+      }
+    }
+  }
+}

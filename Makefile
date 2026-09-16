@@ -304,3 +304,20 @@ integrity-check: ## Run the data-integrity check (DATABASE= optional, defaults t
 
 release-rehearsal: ## Run the local release rehearsal (see docs/development/operations.md)
 	@bash infrastructure/docker/scripts/release-rehearsal.sh
+
+## ---- Phase 12: alert ingestion, correlation, routing, and notification demo ----
+##
+## Requires the "app" Compose profile already running (make incident-up), which now also starts
+## Mailpit and the local webhook sink. See docs/development/alert-ingestion.md for the full guide.
+
+alert-demo: ## Drive the Alertmanager and generic-webhook connectors through a full demo scenario
+	@bash infrastructure/docker/scripts/alert-demo.sh $${INCIDENT_SERVICE_URL:-http://localhost:8081}
+
+## ---- Phase 13: secure MCP server and approval-gated agent operations ----
+##
+## Requires MCP_STDIO_ACCESS_TOKEN set and a built services/incident-service/target/
+## incident-service.jar (mvn package). See docs/development/mcp-server.md.
+
+mcp-diagnostic: ## Run the local MCP diagnostic client (stdio transport)
+	@python3 infrastructure/docker/scripts/mcp-diagnostic-client.py \
+		services/incident-service/target/incident-service.jar $${INCIDENT_ID:-}

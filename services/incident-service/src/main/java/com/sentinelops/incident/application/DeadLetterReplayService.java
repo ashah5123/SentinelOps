@@ -49,7 +49,8 @@ public class DeadLetterReplayService {
       Map.of(
           EventTypes.TELEMETRY_ANOMALY_V1_DLQ, EventTypes.TELEMETRY_ANOMALY_V1,
           EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1_DLQ,
-              EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1);
+              EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1,
+          EventTypes.ALERT_INGESTED_V1_DLQ, EventTypes.ALERT_INGESTED_V1);
 
   private final KafkaProperties kafkaProperties;
   private final KafkaTemplate<String, String> kafkaTemplate;

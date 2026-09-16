@@ -5,7 +5,7 @@ spring:
     hibernate:
       ddl-auto: validate
   flyway:
-    schemas: incidents,audit,runbooks
+    schemas: incidents,audit,runbooks,alerts
     default-schema: incidents
 
 sentinelops:
@@ -62,6 +62,91 @@ sentinelops:
       max-description-chars: 4000
       max-passage-chars: 1500
       template-version: v1
+  alerts:
+    ingestion:
+      max-labels: 50
+      max-annotations: 50
+      max-label-key-length: 100
+      max-label-value-length: 500
+      max-alert-name-length: 200
+      max-summary-length: 500
+      max-description-length: 2000
+      max-payload-bytes: 1048576
+      max-future-skew: 5m
+      max-past-age: 30d
+      supported-schema-versions: [1]
+    hmac:
+      current-secret-id: current
+      current-secret: test-current-secret
+      previous-secret-id: previous
+      previous-secret: test-previous-secret
+      replay-window: 5m
+    alertmanager:
+      shared-token: test-alertmanager-token
+    rate-limit:
+      max-requests-per-window: 100
+      window: 1m
+    correlation:
+      window: 30m
+      max-candidates: 50
+    notification:
+      incident-link-base-url: http://localhost:5173
+      webhook-sink-url: ""
+      email-from: ""
+      email-to: ""
+      max-attempts: 3
+      initial-backoff: 100ms
+      max-backoff: 1s
+      backoff-jitter: 0.2
+      polling-interval: 200ms
+      batch-size: 20
+    escalation:
+      polling-interval: 200ms
+      batch-size: 20
+    routing:
+      rules:
+        - id: sev1-immediate
+          version: 1
+          severity: SEV1
+          route:
+            team: platform-oncall
+            channels: [EMAIL, WEBHOOK, IN_APP]
+            escalation-delay: 1s
+            queue-ai-triage: true
+            suppress: false
+        - id: sev2-standard
+          version: 1
+          severity: SEV2
+          route:
+            team: platform-oncall
+            channels: [WEBHOOK, IN_APP]
+            escalation-delay: 1s
+            queue-ai-triage: true
+            suppress: false
+      default-route:
+        team: unassigned
+        channels: [IN_APP]
+        escalation-delay: 0s
+        queue-ai-triage: false
+        suppress: false
+      business-hours:
+        zone-id: UTC
+        start-hour: 9
+        end-hour: 17
+  mcp:
+    network-transport-enabled: false
+    endpoint-path: /mcp
+    max-page-size: 50
+    max-search-results: 10
+    max-response-bytes: 1048576
+    tool-timeout: 10s
+    rate-limit:
+      max-requests-per-window: 60
+      window: 1m
+      max-concurrent-tool-calls-per-actor: 4
+  proposals:
+    max-per-actor-per-window: 10
+    window: 10m
 
 logging:
   level:

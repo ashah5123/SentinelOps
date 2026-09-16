@@ -1,12 +1,15 @@
 # Alertmanager configuration for the SentinelOps local observability stack.
 #
-# No email, Slack, PagerDuty, webhook, or any other external/paid integration is
-# configured anywhere in this file. The only receiver is "local-null", which accepts
-# alerts without forwarding them anywhere — alerts remain visible in the local
-# Alertmanager UI (http://127.0.0.1:9093) and API, satisfying local-only visibility
-# without risking accidental external delivery or alert loops.
+# Phase 12 adds exactly one real receiver, "sentinelops-incident-service", pointing at
+# incident-service's own Alertmanager-compatible webhook receiver (never a third-party or
+# external endpoint) — see docs/development/alert-ingestion.md's Alertmanager section. It
+# authenticates with a static shared bearer token; Alertmanager's config format has no built-in
+# environment-variable substitution, so the value below must exactly match
+# ALERTS_ALERTMANAGER_SHARED_TOKEN in your .env if you change it from the local-dev default.
+# "local-null" remains available and accepts alerts without forwarding them anywhere, for any
+# rule an operator wants to keep purely visible in the Alertmanager UI (http://127.0.0.1:9093).
 route:
-  receiver: local-null
+  receiver: sentinelops-incident-service
   group_by: ["alertname", "service"]
   group_wait: 30s
   group_interval: 5m
@@ -14,11 +17,18 @@ route:
   routes:
     - matchers:
         - service="incident-service"
-      receiver: local-null
+      receiver: sentinelops-incident-service
       continue: false
 
 receivers:
   - name: local-null
+  - name: sentinelops-incident-service
+    webhook_configs:
+      - url: http://incident-service:8081/api/v1/alerts/webhooks/alertmanager
+        send_resolved: true
+        http_config:
+          authorization:
+            credentials: change-me-local-dev-only
 
 inhibit_rules:
   - source_matchers:

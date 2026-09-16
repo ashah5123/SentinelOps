@@ -16,6 +16,9 @@ public final class ErrorCode {
   public static final String DEAD_LETTER_TOPIC_NOT_ELIGIBLE = "DEAD_LETTER_TOPIC_NOT_ELIGIBLE";
   public static final String AI_SUGGESTION_NOT_FOUND = "AI_SUGGESTION_NOT_FOUND";
   public static final String AI_RATE_LIMITED = "AI_RATE_LIMITED";
+  public static final String PROPOSAL_NOT_FOUND = "PROPOSAL_NOT_FOUND";
+  public static final String PROPOSAL_CONFLICT = "PROPOSAL_CONFLICT";
+  public static final String PROPOSAL_VALIDATION_ERROR = "PROPOSAL_VALIDATION_ERROR";
 
   private ErrorCode() {}
 }

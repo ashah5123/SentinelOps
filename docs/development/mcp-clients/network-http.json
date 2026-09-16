@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sentinelops-network": {
+      "url": "http://<incident-service-host>:8081/mcp",
+      "headers": {
+        "Authorization": "Bearer <token-command-output — never a literal secret>"
+      }
+    }
+  }
+}

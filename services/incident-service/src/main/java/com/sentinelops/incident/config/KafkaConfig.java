@@ -107,6 +107,8 @@ public class KafkaConfig {
                       new TopicPartition(EventTypes.TELEMETRY_ANOMALY_V1_DLQ, -1);
                   case EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1 ->
                       new TopicPartition(EventTypes.INCIDENT_EVIDENCE_CORRELATED_V1_DLQ, -1);
+                  case EventTypes.ALERT_INGESTED_V1 ->
+                      new TopicPartition(EventTypes.ALERT_INGESTED_V1_DLQ, -1);
                   default -> new TopicPartition(record.topic() + ".dlq", -1);
                 });
     ConsumerRecordRecoverer recoverer =

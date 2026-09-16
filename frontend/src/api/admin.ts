@@ -38,6 +38,7 @@ export function searchAuditEvents(
 export const ELIGIBLE_DEAD_LETTER_TOPICS = [
   "telemetry.anomaly.v1.dlq",
   "incident.evidence.correlated.v1.dlq",
+  "alert.ingested.v1.dlq",
 ] as const;
 
 export function replayDeadLetterTopic(

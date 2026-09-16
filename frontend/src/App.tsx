@@ -10,6 +10,8 @@ import { Dashboard } from "./pages/Dashboard";
 import { IncidentQueue } from "./pages/IncidentQueue";
 import { IncidentDetail } from "./pages/IncidentDetail";
 import { AdminRecovery } from "./pages/AdminRecovery";
+import { AdminConnectorHealth } from "./pages/AdminConnectorHealth";
+import { AgentProposals } from "./pages/AgentProposals";
 import { Callback } from "./pages/Callback";
 import { SignedOut } from "./pages/SignedOut";
 
@@ -31,11 +33,20 @@ export function App() {
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/incidents" element={<IncidentQueue />} />
                         <Route path="/incidents/:id" element={<IncidentDetail />} />
+                        <Route path="/proposals" element={<AgentProposals />} />
                         <Route
                           path="/admin/recovery"
                           element={
                             <RequireRole roles={["ADMIN"]}>
                               <AdminRecovery />
+                            </RequireRole>
+                          }
+                        />
+                        <Route
+                          path="/admin/connectors"
+                          element={
+                            <RequireRole roles={["ADMIN"]}>
+                              <AdminConnectorHealth />
                             </RequireRole>
                           }
                         />

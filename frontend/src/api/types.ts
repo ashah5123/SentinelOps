@@ -147,6 +147,74 @@ export interface AiSuggestion {
   reviewFeedback: string | null;
 }
 
+// Phase 12: external alert ingestion, deduplication, correlation, and notification routing.
+// Mirrors AlertEventResponse / AlertCorrelationResponse / NotificationResponse /
+// EscalationResponse / ConnectorHealthResponse exactly — see docs/development/alert-ingestion.md.
+export interface AlertEvent {
+  id: string;
+  connectorType: string;
+  source: string;
+  fingerprint: string;
+  fingerprintVersion: number;
+  status: "FIRING" | "RESOLVED";
+  alertName: string;
+  summary: string | null;
+  severity: string | null;
+  service: string | null;
+  environment: string | null;
+  region: string | null;
+  sourceTimestamp: string;
+  ingestedAt: string;
+  rawPayloadHash: string;
+}
+
+export interface AlertCorrelation {
+  id: string;
+  alertEventId: string;
+  ruleId: string;
+  ruleVersion: number;
+  matchedFields: string;
+  explanation: string;
+  correlatedAt: string;
+}
+
+export type NotificationStatus = "PENDING" | "SENT" | "FAILED" | "DEAD_LETTERED";
+
+export interface AlertNotification {
+  id: string;
+  channel: "EMAIL" | "WEBHOOK" | "IN_APP";
+  routingRuleId: string;
+  routingRuleVersion: number;
+  status: NotificationStatus;
+  attemptCount: number;
+  lastError: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+export type EscalationStatus = "SCHEDULED" | "DELIVERED" | "CANCELLED";
+
+export interface Escalation {
+  id: string;
+  routingRuleId: string;
+  routingRuleVersion: number;
+  scheduledAt: string;
+  status: EscalationStatus;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  cancelledReason: string | null;
+}
+
+export interface ConnectorHealth {
+  name: string;
+  enabled: boolean;
+  lastSuccessfulIngestion: string | null;
+  recentFailureCount: number;
+  lastSuccessfulNotification: string | null;
+  deadLetterCount: number;
+  configurationValid: boolean;
+}
+
 export interface IncidentQueryParams {
   status?: IncidentStatus;
   severity?: IncidentSeverity;
@@ -158,4 +226,49 @@ export interface IncidentQueryParams {
   page?: number;
   size?: number;
   sort?: string;
+}
+
+// Phase 13: MCP-exposed, approval-gated agent operations. Mirrors ProposalResponse exactly — an
+// agent (or a responder) may propose an action, but nothing executes until an authorized human
+// approves it here in the console. See docs/development/mcp-server.md.
+export type ProposalActionType =
+  | "ACKNOWLEDGE"
+  | "ASSIGN"
+  | "CHANGE_SEVERITY"
+  | "ADD_NOTE"
+  | "ESCALATE"
+  | "RESOLVE"
+  | "REPLAY_DEAD_LETTER";
+
+export type ProposalStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "EXPIRED"
+  | "EXECUTED"
+  | "EXECUTION_FAILED";
+export type ProposalRisk = "LOW" | "MEDIUM" | "HIGH";
+
+export interface AgentProposal {
+  id: string;
+  incidentId: string;
+  actionType: ProposalActionType;
+  parameters: Record<string, unknown>;
+  reason: string;
+  evidenceReferences: string[];
+  expectedVersion: number;
+  riskClassification: ProposalRisk;
+  requestedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  status: ProposalStatus;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  reviewNote: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionNote: string | null;
+  executedAt: string | null;
+  executionResult: string | null;
+  executionError: string | null;
 }

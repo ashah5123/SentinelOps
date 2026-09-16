@@ -19,6 +19,7 @@ TOPICS=(
   "remediation.requested.v1"
   "remediation.completed.v1"
   "audit.event.v1"
+  "alert.ingested.v1"
 )
 
 # Dead-letter topics for events whose processing cannot be completed after
@@ -32,6 +33,7 @@ DLQ_TOPICS=(
   "incident.evidence.correlated.v1.dlq"
   "remediation.requested.v1.dlq"
   "remediation.completed.v1.dlq"
+  "alert.ingested.v1.dlq"
 )
 
 topic_exists() {
