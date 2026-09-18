@@ -76,7 +76,8 @@ class AiTriageServiceTest {
             new AiProperties.Retrieval("in-memory", 5, 0.0),
             new AiProperties.CircuitBreakerSettings(3, Duration.ofSeconds(5)),
             new AiProperties.RateLimit(Duration.ZERO),
-            new AiProperties.Prompt(4000, 1500, "v1"));
+            new AiProperties.Prompt(4000, 1500, "v1"),
+            new AiProperties.Chaos(false, "off", Duration.ofSeconds(5)));
 
     when(incidentRepository.findById(incident.getId())).thenReturn(Optional.of(incident));
     when(incidentQueryService.getTimeline(incident.getId())).thenReturn(List.of());
@@ -206,7 +207,8 @@ class AiTriageServiceTest {
             properties.retrieval(),
             properties.circuitBreaker(),
             new AiProperties.RateLimit(Duration.ofMinutes(1)),
-            properties.prompt());
+            properties.prompt(),
+            properties.chaos());
     AiTriageService rateLimitedService =
         new AiTriageService(
             incidentRepository,

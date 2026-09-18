@@ -28,6 +28,7 @@ public class AiProperties {
   private final CircuitBreakerSettings circuitBreaker;
   private final RateLimit rateLimit;
   private final Prompt prompt;
+  private final Chaos chaos;
 
   public AiProperties(
       boolean enabled,
@@ -37,7 +38,8 @@ public class AiProperties {
       Retrieval retrieval,
       CircuitBreakerSettings circuitBreaker,
       RateLimit rateLimit,
-      Prompt prompt) {
+      Prompt prompt,
+      Chaos chaos) {
     this.enabled = enabled;
     this.provider = provider;
     this.embeddingProvider = embeddingProvider;
@@ -46,6 +48,7 @@ public class AiProperties {
     this.circuitBreaker = circuitBreaker;
     this.rateLimit = rateLimit;
     this.prompt = prompt;
+    this.chaos = chaos;
   }
 
   public boolean enabled() {
@@ -78,6 +81,10 @@ public class AiProperties {
 
   public Prompt prompt() {
     return prompt;
+  }
+
+  public Chaos chaos() {
+    return chaos;
   }
 
   /** Local Ollama endpoint/model configuration — never a paid/external API. */
@@ -209,6 +216,40 @@ public class AiProperties {
 
     public String templateVersion() {
       return templateVersion;
+    }
+  }
+
+  /**
+   * Phase 15 chaos-testing hook (section: "Slow, unavailable, or malformed LLM responses").
+   * Disabled by default, even under the dev/app profile — must be explicitly opted into, exactly
+   * like {@code sentinelops.remediation}'s chaos-adjacent fault-injection hooks. Honored only by
+   * {@code ChaosInjectingAiProvider}, which decorates the real provider bean rather than modifying
+   * it — the real provider code paths are never changed by this flag.
+   */
+  public static class Chaos {
+    private final boolean enabled;
+
+    /** "off" | "slow" | "unavailable" | "malformed". */
+    @NotBlank private final String mode;
+
+    private final Duration injectedDelay;
+
+    public Chaos(boolean enabled, String mode, Duration injectedDelay) {
+      this.enabled = enabled;
+      this.mode = mode;
+      this.injectedDelay = injectedDelay;
+    }
+
+    public boolean enabled() {
+      return enabled;
+    }
+
+    public String mode() {
+      return mode;
+    }
+
+    public Duration injectedDelay() {
+      return injectedDelay;
     }
   }
 }

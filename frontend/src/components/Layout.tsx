@@ -20,6 +20,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/incidents">Incidents</NavLink>
           <NavLink to="/proposals">Agent Proposals</NavLink>
           <NavLink to="/remediations">Remediations</NavLink>
+          <NavLink to="/platform-health">Platform Health</NavLink>
           {hasRole(auth.roles, "ADMIN") && <NavLink to="/admin/recovery">Recovery</NavLink>}
           {hasRole(auth.roles, "ADMIN") && <NavLink to="/admin/connectors">Connectors</NavLink>}
         </nav>

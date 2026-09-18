@@ -1,0 +1,13 @@
+# SentinelOps gitleaks configuration (Phase 15).
+#
+# No custom allowlist entries exist yet — every finding gitleaks reports against this repository
+# is expected to be a real, actionable secret, not a documented false positive. If a future scan
+# flags a genuine false positive (e.g. a placeholder value in .env.example that matches a secret
+# pattern by coincidence), add a `[[allowlist.regexes]]` or `[[allowlist.paths]]` entry here with
+# a comment explaining exactly why it is safe — never delete a finding without one.
+#
+# Extends gitleaks' own default detection rule set rather than replacing it.
+title = "sentinelops-gitleaks-config"
+
+[extend]
+useDefault = true

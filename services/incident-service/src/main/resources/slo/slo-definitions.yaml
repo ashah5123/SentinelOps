@@ -1,0 +1,100 @@
+# SentinelOps Phase 15 service-level objectives.
+#
+# Each sliQuery is a PromQL expression intended to evaluate to a single success-ratio value in
+# [0, 1]. These queries are a starting point derived from the metric *families* already emitted
+# by each service (Micrometer Counter/Timer names) — before wiring this catalog against a real
+# Prometheus instance, verify each metric name still matches with:
+#   grep -rn "Counter.builder\|Timer.builder\|Gauge.builder" services/*/src/main/java
+# A query that references a metric name which has since been renamed or removed degrades
+# gracefully (SloEvaluationService reports that objective as UNKNOWN, never a fabricated value —
+# see docs/validation/slo.md).
+slos:
+  - id: alert-telemetry-ingestion
+    name: Alert & telemetry ingestion success rate
+    description: >
+      Fraction of alert/telemetry ingestion attempts (Alertmanager webhook, generic webhook,
+      Kafka event consumption) that are accepted and durably recorded, not rejected or dropped.
+    sliQuery: >
+      sum(rate(sentinelops_alerts_ingested_total{result="accepted"}[5m]))
+      /
+      sum(rate(sentinelops_alerts_ingested_total[5m]))
+    objective: 0.995
+    windowDays: 28
+
+  - id: incident-creation-correlation
+    name: Incident creation & correlation success rate
+    description: >
+      Fraction of incident-creating events that result in either a new incident or correct
+      correlation to an existing one, without landing in a dead-letter topic.
+    sliQuery: >
+      1 - (
+        sum(rate(sentinelops_kafka_consumer_errors_total{topic=~"incident.*|deployment.*|service.dependency.*"}[5m]))
+        /
+        sum(rate(sentinelops_kafka_consumer_records_total{topic=~"incident.*|deployment.*|service.dependency.*"}[5m]))
+      )
+    objective: 0.99
+    windowDays: 28
+
+  - id: operator-console-availability
+    name: Operator-console availability
+    description: Fraction of REST API requests backing the console that complete without a 5xx.
+    sliQuery: >
+      1 - (
+        sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+        /
+        sum(rate(http_server_requests_seconds_count[5m]))
+      )
+    objective: 0.999
+    windowDays: 28
+
+  - id: notification-delivery
+    name: Notification delivery success rate
+    description: Fraction of enqueued notifications delivered (not dead-lettered) within retry limits.
+    sliQuery: >
+      sum(rate(sentinelops_notifications_delivered_total[30m]))
+      /
+      sum(rate(sentinelops_notifications_enqueued_total[30m]))
+    objective: 0.98
+    windowDays: 28
+
+  - id: ai-triage-availability
+    name: AI-triage availability & fallback
+    description: >
+      Fraction of triage attempts that either produce a suggestion or explicitly and gracefully
+      fall back (never an unhandled error that blocks deterministic incident handling — see
+      docs/development/ai-triage.md).
+    sliQuery: >
+      1 - (
+        sum(rate(sentinelops_ai_triage_errors_total{fallback="false"}[15m]))
+        /
+        sum(rate(sentinelops_ai_triage_requests_total[15m]))
+      )
+    objective: 0.95
+    windowDays: 28
+
+  - id: remediation-execution-rollback
+    name: Remediation execution & rollback correctness
+    description: >
+      Fraction of remediation executions that reach SUCCEEDED, or correctly reach ROLLED_BACK
+      after a failure (i.e., never left stuck in RUNNING or silently abandoned).
+    sliQuery: >
+      1 - (
+        sum(rate(sentinelops_remediation_executions_total{status="failed_no_rollback"}[1h]))
+        /
+        sum(rate(sentinelops_remediation_executions_total[1h]))
+      )
+    objective: 0.99
+    windowDays: 28
+
+  - id: data-durability-recovery
+    name: Data durability & recovery
+    description: >
+      Fraction of scheduled backup+restore-verification cycles (see
+      infrastructure/docker/scripts/db-restore-verify.sh, run every CI push in the
+      backup-restore-verify job) that succeed with zero integrity-check failures.
+    sliQuery: >
+      sum(rate(sentinelops_backup_restore_verifications_total{result="success"}[7d]))
+      /
+      sum(rate(sentinelops_backup_restore_verifications_total[7d]))
+    objective: 0.999
+    windowDays: 90

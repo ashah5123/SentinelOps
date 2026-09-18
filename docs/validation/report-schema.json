@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SentinelOps validation report",
+  "description": "Schema for infrastructure/docker/scripts/run-validation.sh's report.json output. Every field is populated from a real command's actual result — never a precomputed or assumed value.",
+  "type": "object",
+  "required": ["runId", "generatedAt", "commit", "workingTreeDirty", "checks", "label"],
+  "properties": {
+    "runId": {
+      "type": "string",
+      "description": "Unique identifier for this run, e.g. validation-20260101T000000Z."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp the report was written."
+    },
+    "commit": {
+      "type": "string",
+      "description": "Short git commit SHA the run was executed against (or 'unknown' outside a git checkout)."
+    },
+    "workingTreeDirty": {
+      "type": "boolean",
+      "description": "True if uncommitted changes were present at run time."
+    },
+    "label": {
+      "type": "string",
+      "const": "local benchmark/validation run — not a production claim"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "detail"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "fail", "partial", "skipped"] },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  }
+}

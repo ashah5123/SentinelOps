@@ -1,0 +1,203 @@
+# SentinelOps Phase 15 chaos-experiment catalog.
+#
+# This repository has no real Kubernetes cluster (confirmed: no manifests, no kind/minikube
+# config anywhere in-repo) — the local environment is entirely Docker Compose (see
+# docs/development/local-platform.md). Every experiment below therefore targets a Compose
+# container as the local stand-in for a Kubernetes pod/node, exactly the same substitution
+# principle Phase 14 used for "no real Kubernetes cluster" action adapters (see
+# docs/development/remediation.md's "local implementations" section).
+#
+# Every target container is required to carry the `sentinelops.chaos-target: "true"` label
+# (see infrastructure/docker/docker-compose.yml) — chaos-experiment.sh refuses to act on any
+# container missing that label, which is the literal mechanism satisfying "restrict experiments
+# to explicitly labeled development resources."
+#
+# This file is a human/machine-readable catalog only; chaos-experiment.sh is the executor and
+# re-implements each field's constraint in code (duration bound, abort condition, recovery
+# check) rather than parsing this YAML at runtime, so a typo here can never silently disable a
+# safety control.
+
+experiments:
+  - id: pod-termination
+    category: compute
+    target: one Compose container at a time (incident-service, telemetry-correlation-service)
+    method: repeated `docker compose kill` + `docker compose up -d` (restart), N times
+    duration: default 60s total (5 kill/restart cycles, 10s apart) — bounded by --cycles/--interval
+    expected_behavior: >
+      The service reaches "healthy" again within its configured healthcheck window after every
+      restart; in-flight outbox events are not lost (durable in Postgres, published on recovery).
+    safety_limits: >
+      Max 10 cycles per invocation; refuses to target any container without the chaos-target
+      label; never touches postgres/redis/redpanda/minio data volumes.
+    abort_condition: >
+      Aborts immediately if the container fails to reach "healthy" within 3x its configured
+      start_period after any single restart.
+    recovery_validation: GET /actuator/health returns UP; no ERROR-level restart-loop in logs.
+
+  - id: resource-pressure
+    category: compute
+    target: one Compose container (incident-service, telemetry-correlation-service, postgres)
+    method: >
+      `docker update --cpus/--memory` to a temporary constrained limit for the experiment
+      duration, then restored to the container's original `deploy.resources.limits`.
+    duration: default 60s, max 300s (--duration)
+    expected_behavior: >
+      Increased latency/GC pressure is visible in Micrometer metrics; the service does not
+      crash-loop and returns to normal p95 latency within 30s of limits being restored.
+    safety_limits: never sets a limit below 0.25 CPU / 128Mi; always restores the original limit
+      in a trap, even on script failure or Ctrl-C.
+    abort_condition: aborts if the container is OOM-killed (exit code 137) during the experiment.
+    recovery_validation: p95 latency (from benchmark-run.sh's sampled metrics) returns within 20%
+      of its pre-experiment value within 60s of restoration.
+
+  - id: network-fault
+    category: network
+    target: one Compose container's network namespace
+    method: >
+      `docker exec <container> tc qdisc add dev eth0 root netem delay/loss` for latency/packet
+      loss; `docker network disconnect sentinelops-net <container>` for full isolation.
+    duration: default 30s, max 120s
+    expected_behavior: >
+      Callers see increased latency or timeouts (not silent data corruption); on restoration,
+      new requests succeed immediately with no manual restart needed.
+    safety_limits: isolation mode never targets postgres (would corrupt in-flight transactions
+      beyond what the experiment intends to test) — restricted to incident-service,
+      telemetry-correlation-service, redpanda, redis.
+    abort_condition: aborts if `tc` is unavailable in the target container image (falls back to
+      reporting "unsupported on this image" rather than silently no-op'ing).
+    recovery_validation: `tc qdisc del` (or `docker network connect`) succeeds and a subsequent
+      health check returns UP within 10s.
+
+  - id: kafka-broker-fault
+    category: messaging
+    target: sentinelops-redpanda
+    method: `docker compose pause redpanda` for N seconds, then unpause; consumer-lag variant
+      additionally pauses only the consuming application container while the broker keeps
+      accepting produces.
+    duration: default 15s (extends Phase 6's reliability-fault-test.sh broker-outage scenario)
+    expected_behavior: >
+      Outbox rows stay PENDING (never lost) while the broker is unreachable; publishing resumes
+      automatically once the broker is unpaused, with no manual intervention.
+    safety_limits: max 60s paused; never deletes the redpanda-data volume.
+    abort_condition: aborts if the broker fails to report itself healthy within 30s of unpause.
+    recovery_validation: outbox backlog (from /actuator/prometheus) returns to its
+      pre-experiment depth within 2x the pause duration.
+
+  - id: postgres-fault
+    category: database
+    target: sentinelops-postgres
+    method: >
+      Connection exhaustion: opens `max_connections - 5` idle psql connections; unavailability:
+      `docker compose pause postgres` for N seconds.
+    duration: default 10s pause / 30s connection-exhaustion hold
+    expected_behavior: >
+      HikariCP surfaces connection-acquisition timeouts (not hangs); the application recovers
+      automatically once connections are released / postgres is unpaused, with no restart.
+    safety_limits: connection-exhaustion never sets `max_connections` itself (read-only against
+      the configured value); pause never exceeds 30s.
+    abort_condition: aborts if postgres fails `pg_isready` more than 30s after unpause.
+    recovery_validation: HikariCP active-connections metric returns to baseline; a subsequent
+      `GET /api/v1/incidents` succeeds.
+
+  - id: redis-fault
+    category: cache
+    target: sentinelops-redis
+    method: `docker compose pause redis` for N seconds, then unpause.
+    duration: default 15s, max 60s
+    expected_behavior: >
+      Any Redis-dependent read path degrades gracefully (falls through to the source of truth)
+      rather than raising a 5xx — see "graceful degradation" in docs/validation/slo.md. As of
+      this phase, no application code path depends on Redis yet (provisioned infra only — see
+      docs/development/local-platform.md), so this experiment currently validates that its
+      absence causes zero request failures, establishing the baseline before any future feature
+      adds a Redis-backed cache.
+    safety_limits: max 60s paused; never flushes data.
+    abort_condition: aborts if redis fails to report PONG within 10s of unpause.
+    recovery_validation: `redis-cli ping` returns PONG; no elevated 5xx rate during the pause.
+
+  - id: object-storage-fault
+    category: storage
+    target: sentinelops-minio
+    method: `docker compose pause minio` for N seconds, then unpause.
+    duration: default 15s, max 60s
+    expected_behavior: >
+      As of this phase no application code path reads/writes MinIO yet (provisioned buckets
+      only — runbooks/incident-artifacts/postmortems, see docs/development/local-platform.md),
+      so this experiment validates zero request failures during the outage, establishing the
+      baseline before any future feature wires in object storage.
+    safety_limits: max 60s paused; never deletes bucket data.
+    abort_condition: aborts if minio fails its healthcheck within 15s of unpause.
+    recovery_validation: `mc ready` (or the container healthcheck) reports healthy.
+
+  - id: llm-fault
+    category: ai
+    target: incident-service's AI-triage provider
+    method: >
+      Sets `sentinelops.ai.chaos.mode` to `slow` (adds a fixed injected delay),
+      `unavailable` (forces a provider-call exception), or `malformed` (returns a response that
+      fails StructuredOutputValidator) for the experiment duration, then restores `off`. Gated
+      behind a dedicated `AiChaosMode` enum honored only by a `ChaosInjectingAiProvider` decorator
+      that wraps the real provider — the real provider code paths are never modified.
+    duration: default 30s, max 300s
+    expected_behavior: >
+      AI-triage unavailability never blocks deterministic incident handling — see Phase 11's
+      documented fallback: the incident is still created/correlated/routed with no AI suggestion
+      attached, and the console shows a clear "AI unavailable" state rather than an error.
+    safety_limits: only active when `sentinelops.ai.chaos.enabled=true` (default false; must be
+      explicitly opted into, never on by default even in the dev profile).
+    abort_condition: aborts (raises) if any non-AI incident-handling request fails while chaos
+      mode is active — that would indicate AI unavailability is *not* actually isolated.
+    recovery_validation: AiSuggestion queue drains and triage resumes within 10s of mode
+      returning to `off`.
+
+  - id: telemetry-malformed-event
+    category: messaging
+    target: telemetry-correlation-service's Kafka consumer (`deployment.changed.v1` topic)
+    method: >
+      Produces duplicate, artificially delayed, reordered, and schema-invalid
+      EventEnvelope<DeploymentChangedPayload> messages directly onto `deployment.changed.v1`
+      via `rpk topic produce` inside the redpanda container (no extra client library needed).
+    duration: single burst, ~10s to produce
+    expected_behavior: >
+      Duplicates are deduplicated (no duplicate correlation evidence); malformed events are
+      dead-lettered, never crash the consumer; reordering does not corrupt correlation state.
+    safety_limits: produces at most 50 synthetic events per run, all tagged with a
+      `chaos-test-*` correlation ID so they are trivially distinguishable from real data.
+    abort_condition: aborts if the consumer's error rate exceeds 50% of the injected malformed
+      events (expected is close to 100% dead-lettered, not crashed).
+    recovery_validation: consumer lag returns to 0 within 30s of the burst; no consumer restart
+      occurred.
+
+  - id: notification-fault
+    category: integrations
+    target: sentinelops-mailpit, sentinelops-webhook-sink
+    method: `docker compose pause <target>` for N seconds, then unpause.
+    duration: default 15s, max 60s
+    expected_behavior: >
+      Notification delivery is retried and dead-lettered per Phase 12's retry classification —
+      never silently dropped, never blocks incident processing itself.
+    safety_limits: max 60s paused.
+    abort_condition: aborts if the notification dead-letter rate exceeds 100% of attempts made
+      during the pause (some should succeed once retried post-recovery).
+    recovery_validation: pending notifications drain within 2x the pause duration after unpause.
+
+  - id: remediation-execution-fault
+    category: remediation
+    target: incident-service's remediation scheduler
+    method: >
+      Forces a target simulated deployment unhealthy
+      (`UPDATE incidents.simulated_deployments SET healthy = false`, the same fault-injection
+      hook `remediation-demo.sh` uses) immediately before approving a remediation execution, and
+      separately restarts incident-service mid-execution (between two steps) to test
+      restart-recovery of an in-flight execution.
+    duration: single run, ~30s
+    expected_behavior: >
+      A failed post-execution health check triggers automatic rollback to ROLLED_BACK (never
+      left RUNNING or SUCCEEDED); a mid-execution restart leaves the execution safely resumable
+      or in a clearly failed+audited state — never silently abandoned.
+    safety_limits: only ever targets the `simulated_deployments` table (never a real cluster,
+      since none exists); restarts only the incident-service container, never postgres/redpanda.
+    abort_condition: aborts if the execution is left in RUNNING status more than 60s after the
+      incident-service restart with no scheduler picking it back up.
+    recovery_validation: execution status is one of ROLLED_BACK, FAILED, or SUCCEEDED (never
+      RUNNING) within 60s; a full audit trail exists for every state transition.

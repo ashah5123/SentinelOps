@@ -158,6 +158,12 @@ infrastructure/docker/backups/*
 !infrastructure/docker/backups/.gitkeep
 
 # =========================
+# Phase 15 validation-pipeline raw results (local artifacts; see docs/validation/README.md)
+# =========================
+infrastructure/docker/results/*
+!infrastructure/docker/results/.gitkeep
+
+# =========================
 # Frontend (Phase 10)
 # =========================
 frontend/.env.local

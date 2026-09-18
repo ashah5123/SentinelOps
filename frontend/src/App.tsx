@@ -13,6 +13,7 @@ import { AdminRecovery } from "./pages/AdminRecovery";
 import { AdminConnectorHealth } from "./pages/AdminConnectorHealth";
 import { AgentProposals } from "./pages/AgentProposals";
 import { Remediations } from "./pages/Remediations";
+import { PlatformHealth } from "./pages/PlatformHealth";
 import { Callback } from "./pages/Callback";
 import { SignedOut } from "./pages/SignedOut";
 
@@ -36,6 +37,7 @@ export function App() {
                         <Route path="/incidents/:id" element={<IncidentDetail />} />
                         <Route path="/proposals" element={<AgentProposals />} />
                         <Route path="/remediations" element={<Remediations />} />
+                        <Route path="/platform-health" element={<PlatformHealth />} />
                         <Route
                           path="/admin/recovery"
                           element={

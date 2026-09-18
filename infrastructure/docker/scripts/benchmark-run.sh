@@ -14,7 +14,15 @@
 #
 # Scenarios (see infrastructure/docker/k6/scenarios/): smoke | paginated-reads |
 #   incident-creation | lifecycle-transitions | mixed-workload | burst-recovery |
-#   unauthorized-access
+#   unauthorized-access | sustained-telemetry-ingestion | ai-triage-saturation |
+#   concurrent-remediation-requests | notification-fanout | console-polling
+#
+# Phase 15 addition: to measure "recovery after dependency restoration," run a sustained
+# scenario (e.g. mixed-workload or sustained-telemetry-ingestion) concurrently with
+# infrastructure/docker/scripts/chaos-experiment.sh (e.g. kafka-broker-fault or postgres-fault)
+# in a second terminal — this script's own RECOVERY_WINDOW_SECONDS post-run sampling then
+# captures how quickly backlog/latency metrics return to baseline once the chaos experiment's
+# own recovery step (which every experiment runs unconditionally) restores the dependency.
 #
 # Env vars this script itself reads (all optional):
 #   BENCHMARK_RUN_ID          run identifier (default: generated); pass the same value used by

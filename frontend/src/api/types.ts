@@ -340,3 +340,18 @@ export interface RemediationStep {
   output: Record<string, unknown> | null;
   error: string | null;
 }
+
+export type BurnRateSeverity = "OK" | "WATCH" | "WARNING" | "CRITICAL" | "UNKNOWN";
+
+export interface SloStatus {
+  id: string;
+  name: string;
+  description: string;
+  objective: number;
+  windowDays: number;
+  known: boolean;
+  currentSli: number | null;
+  errorBudgetRemaining: number | null;
+  burnRate: number | null;
+  severity: BurnRateSeverity;
+}

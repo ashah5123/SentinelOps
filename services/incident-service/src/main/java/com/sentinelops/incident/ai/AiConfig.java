@@ -5,6 +5,7 @@ import com.sentinelops.incident.ai.embedding.DeterministicEmbeddingProvider;
 import com.sentinelops.incident.ai.embedding.EmbeddingProvider;
 import com.sentinelops.incident.ai.embedding.OllamaEmbeddingProvider;
 import com.sentinelops.incident.ai.provider.AiProvider;
+import com.sentinelops.incident.ai.provider.ChaosInjectingAiProvider;
 import com.sentinelops.incident.ai.provider.DeterministicAiProvider;
 import com.sentinelops.incident.ai.provider.DisabledAiProvider;
 import com.sentinelops.incident.ai.provider.OllamaAiProvider;
@@ -33,19 +34,26 @@ public class AiConfig {
   @Bean
   public AiProvider aiProvider(
       AiProperties properties, ObjectMapper objectMapper, SimpleCircuitBreaker circuitBreaker) {
+    AiProvider provider;
     if (!properties.enabled()) {
-      return new DisabledAiProvider();
+      provider = new DisabledAiProvider();
+    } else {
+      provider =
+          switch (properties.provider()) {
+            case "ollama" -> new OllamaAiProvider(properties, objectMapper, circuitBreaker);
+            case "deterministic" -> new DeterministicAiProvider(objectMapper);
+            case "disabled" -> new DisabledAiProvider();
+            default ->
+                throw new IllegalStateException(
+                    "Unknown sentinelops.ai.provider: "
+                        + properties.provider()
+                        + " (expected ollama, deterministic, or disabled)");
+          };
     }
-    return switch (properties.provider()) {
-      case "ollama" -> new OllamaAiProvider(properties, objectMapper, circuitBreaker);
-      case "deterministic" -> new DeterministicAiProvider(objectMapper);
-      case "disabled" -> new DisabledAiProvider();
-      default ->
-          throw new IllegalStateException(
-              "Unknown sentinelops.ai.provider: "
-                  + properties.provider()
-                  + " (expected ollama, deterministic, or disabled)");
-    };
+    // Phase 15 chaos-testing hook (section: "Slow, unavailable, or malformed LLM responses") —
+    // the decorator is always present but only ever intercepts when properties.chaos().enabled()
+    // is true, which is false by default. See ChaosInjectingAiProvider's javadoc.
+    return new ChaosInjectingAiProvider(provider, properties);
   }
 
   @Bean

@@ -133,6 +133,11 @@ sentinelops:
       max-description-chars: ${AI_PROMPT_MAX_DESCRIPTION_CHARS:4000}
       max-passage-chars: ${AI_PROMPT_MAX_PASSAGE_CHARS:1500}
       template-version: v1
+    # Phase 15 chaos-testing hook — disabled by default; see chaos-experiment.sh llm-fault.
+    chaos:
+      enabled: ${AI_CHAOS_ENABLED:false}
+      mode: ${AI_CHAOS_MODE:off}
+      injected-delay: ${AI_CHAOS_INJECTED_DELAY:5s}
   # External alert ingestion, deduplication, correlation, routing, notification, and escalation
   # (Phase 12). See docs/development/alert-ingestion.md.
   alerts:

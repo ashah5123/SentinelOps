@@ -407,6 +407,153 @@ jobs:
           docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
             --profile app down --volumes
 
+  # Phase 15: the same drill as dr-exercise.sh's own header — a real backup, simulated
+  # post-backup writes, a restore, and a measured RTO/RPO from this run's own numbers. See
+  # docs/validation/disaster-recovery.md.
+  dr-exercise:
+    name: Disaster-recovery exercise (RTO/RPO measurement)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: cp .env.example .env
+      - name: Start Postgres and the incident service
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: Run the DR exercise
+        run: bash infrastructure/docker/scripts/dr-exercise.sh
+      - name: Run the MinIO backup/restore verification
+        run: bash infrastructure/docker/scripts/minio-backup-restore-verify.sh
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes
+
+  # Phase 15: a bounded, safe subset of the chaos-experiment catalog run against the live app
+  # profile — proves every experiment stops safely and restores the environment automatically,
+  # not just that the script parses. See infrastructure/docker/scripts/chaos/chaos-experiments.yaml.
+  chaos-smoke:
+    name: Chaos-experiment smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          echo "CHAOS_EXPERIMENTS_ENABLED=true" >> .env
+      - name: Start the full app profile
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: kafka-broker-fault (pause/unpause redpanda, verify recovery)
+        run: |
+          CHAOS_DURATION=10 bash infrastructure/docker/scripts/chaos-experiment.sh kafka-broker-fault
+      - name: redis-fault (pause/unpause redis, verify recovery)
+        run: |
+          CHAOS_DURATION=10 bash infrastructure/docker/scripts/chaos-experiment.sh redis-fault
+      - name: pod-termination (bounded restart cycles against incident-service)
+        run: |
+          CHAOS_CYCLES=2 CHAOS_INTERVAL=5 bash infrastructure/docker/scripts/chaos-experiment.sh pod-termination
+      - name: Confirm the stack is healthy after every experiment
+        run: |
+          curl -fsS http://localhost:8081/actuator/health | grep -q '"status":"UP"'
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes
+
+  # Phase 15: static application security testing beyond SpotBugs/Trivy. Runs on push/PR;
+  # findings surface in the repository's Security tab. Never blocks on pre-existing findings this
+  # phase did not introduce — see docs/validation/security-validation.md's accepted-risk notes.
+  codeql:
+    name: CodeQL analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      matrix:
+        language: [java-kotlin, javascript-typescript]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # Phase 15: secret scanning across the full git history on every push/PR. Fails the job on any
+  # detected secret — see .gitleaks.toml for documented, justified allowlist entries only
+  # (placeholder/example values, never a real credential).
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Phase 15: OWASP ZAP baseline (passive) scan of the REST API against the running app profile.
+  # Passive-only by design — this is CI running against a shared runner, never an active/attack
+  # scan, and never against anything but this ephemeral, disposable container stack.
+  zap-baseline-scan:
+    name: OWASP ZAP baseline scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: cp .env.example .env
+      - name: Start the full app profile
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://localhost:8081/actuator/health"
+          cmd_options: "-a"
+          fail_action: false
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes
+
   # Phase 10: frontend static checks + unit/component tests + production build. Bounded, fast,
   # no backend/Docker dependency (everything here mocks the API — see src/**/*.test.tsx).
   frontend:
