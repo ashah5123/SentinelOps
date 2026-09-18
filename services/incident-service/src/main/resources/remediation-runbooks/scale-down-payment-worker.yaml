@@ -1,0 +1,48 @@
+# High-risk: pauses the payment worker queue and scales its deployment in a restricted
+# (production) environment. Requires two-person approval (policy engine sets
+# required_approvals = 2 for HIGH risk in a restricted environment) and is denied outright
+# outside an approved maintenance window.
+slug: scale-down-payment-worker
+version: 1
+title: Pause and scale down payment-worker during sustained backlog
+riskClassification: HIGH
+steps:
+  - name: pause-queue
+    adapter: QUEUE_PAUSE
+    parameters:
+      name: notification-dispatch
+    timeoutSeconds: 15
+    maxRetries: 1
+  - name: scale-down
+    adapter: KUBERNETES_SCALE
+    parameters:
+      service: payment-worker
+      environment: production
+      replicas: 1
+    timeoutSeconds: 60
+    maxRetries: 1
+    backoffInitialMillis: 1000
+    backoffMultiplier: 2.0
+  - name: verify-health
+    adapter: HEALTH_CHECK
+    parameters:
+      service: payment-worker
+      environment: production
+    timeoutSeconds: 30
+    maxRetries: 3
+    backoffInitialMillis: 2000
+    backoffMultiplier: 2.0
+rollbackSteps:
+  - name: rollback-scale
+    adapter: KUBERNETES_ROLLBACK
+    parameters:
+      service: payment-worker
+      environment: production
+    timeoutSeconds: 60
+    maxRetries: 1
+  - name: resume-queue
+    adapter: QUEUE_RESUME
+    parameters:
+      name: notification-dispatch
+    timeoutSeconds: 15
+    maxRetries: 1

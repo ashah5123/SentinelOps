@@ -5,6 +5,7 @@ import com.sentinelops.incident.alerts.AlertsProperties;
 import com.sentinelops.incident.config.IncidentServiceProperties;
 import com.sentinelops.incident.mcp.McpProperties;
 import com.sentinelops.incident.proposal.ProposalProperties;
+import com.sentinelops.incident.remediation.RemediationProperties;
 import com.sentinelops.incident.security.SecurityProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -18,7 +19,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
   AiProperties.class,
   AlertsProperties.class,
   McpProperties.class,
-  ProposalProperties.class
+  ProposalProperties.class,
+  RemediationProperties.class
 })
 @EnableScheduling
 public class IncidentServiceApplication {

@@ -236,6 +236,28 @@ sentinelops:
   proposals:
     max-per-actor-per-window: ${PROPOSALS_MAX_PER_ACTOR:10}
     window: ${PROPOSALS_WINDOW:10m}
+  # Policy-controlled remediation engine (Phase 14) — every allowlist below is a hard boundary
+  # enforced by the matching action adapter.
+  remediation:
+    allowed-cache-namespaces: ${REMEDIATION_ALLOWED_CACHE_NAMESPACES:session,triage-search,runbook-search}
+    allowed-queue-names: ${REMEDIATION_ALLOWED_QUEUE_NAMES:notification-dispatch,alert-processing}
+    allowed-diagnostic-commands: ${REMEDIATION_ALLOWED_DIAGNOSTIC_COMMANDS:ping,disk-usage,service-status}
+    max-concurrent-executions: ${REMEDIATION_MAX_CONCURRENT_EXECUTIONS:5}
+    lock-lease-duration: ${REMEDIATION_LOCK_LEASE_DURATION:5m}
+    scheduler-polling-interval: ${REMEDIATION_SCHEDULER_POLLING_INTERVAL:5s}
+    scheduler-batch-size: ${REMEDIATION_SCHEDULER_BATCH_SIZE:5}
+    diagnostic-command-timeout: ${REMEDIATION_DIAGNOSTIC_COMMAND_TIMEOUT:10s}
+    blast-radius:
+      max-resource-count: ${REMEDIATION_BLAST_RADIUS_MAX_RESOURCES:3}
+      restricted-environments: ${REMEDIATION_BLAST_RADIUS_RESTRICTED_ENVIRONMENTS:production}
+    circuit-breaker:
+      failure-threshold: ${REMEDIATION_CIRCUIT_BREAKER_FAILURE_THRESHOLD:3}
+      open-duration: ${REMEDIATION_CIRCUIT_BREAKER_OPEN_DURATION:1m}
+    maintenance-window:
+      days-of-week: ${REMEDIATION_MAINTENANCE_WINDOW_DAYS:SATURDAY,SUNDAY}
+      start-hour: ${REMEDIATION_MAINTENANCE_WINDOW_START_HOUR:2}
+      end-hour: ${REMEDIATION_MAINTENANCE_WINDOW_END_HOUR:6}
+      zone-id: ${REMEDIATION_MAINTENANCE_WINDOW_ZONE:UTC}
 
 management:
   endpoints:

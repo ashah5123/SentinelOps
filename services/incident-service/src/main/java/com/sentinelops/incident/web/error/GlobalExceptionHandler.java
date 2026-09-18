@@ -9,6 +9,11 @@ import com.sentinelops.incident.domain.IllegalIncidentTransitionException;
 import com.sentinelops.incident.proposal.ProposalConflictException;
 import com.sentinelops.incident.proposal.ProposalNotFoundException;
 import com.sentinelops.incident.proposal.ProposalValidationException;
+import com.sentinelops.incident.remediation.adapters.AdapterValidationException;
+import com.sentinelops.incident.remediation.execution.RemediationConflictException;
+import com.sentinelops.incident.remediation.execution.RemediationNotFoundException;
+import com.sentinelops.incident.remediation.runbook.RunbookNotFoundException;
+import com.sentinelops.incident.remediation.runbook.RunbookValidationException;
 import com.sentinelops.incident.security.RestAccessDeniedHandler;
 import com.sentinelops.incident.security.RestAuthenticationEntryPoint;
 import jakarta.servlet.http.HttpServletRequest;
@@ -136,6 +141,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       ProposalValidationException e, HttpServletRequest request) {
     return build(
         HttpStatus.BAD_REQUEST, ErrorCode.PROPOSAL_VALIDATION_ERROR, e.getMessage(), request);
+  }
+
+  @ExceptionHandler(RemediationNotFoundException.class)
+  public ProblemDetail handleRemediationNotFound(
+      RemediationNotFoundException e, HttpServletRequest request) {
+    return build(HttpStatus.NOT_FOUND, ErrorCode.REMEDIATION_NOT_FOUND, e.getMessage(), request);
+  }
+
+  @ExceptionHandler(RemediationConflictException.class)
+  public ProblemDetail handleRemediationConflict(
+      RemediationConflictException e, HttpServletRequest request) {
+    ProblemDetail problem =
+        build(HttpStatus.CONFLICT, ErrorCode.REMEDIATION_CONFLICT, e.getMessage(), request);
+    problem.setProperty("reasonCode", e.code());
+    return problem;
+  }
+
+  @ExceptionHandler(RunbookNotFoundException.class)
+  public ProblemDetail handleRunbookNotFound(
+      RunbookNotFoundException e, HttpServletRequest request) {
+    return build(HttpStatus.NOT_FOUND, ErrorCode.RUNBOOK_NOT_FOUND, e.getMessage(), request);
+  }
+
+  @ExceptionHandler({RunbookValidationException.class, AdapterValidationException.class})
+  public ProblemDetail handleRunbookValidation(RuntimeException e, HttpServletRequest request) {
+    return build(
+        HttpStatus.BAD_REQUEST, ErrorCode.RUNBOOK_VALIDATION_ERROR, e.getMessage(), request);
   }
 
   @ExceptionHandler(IdempotencyConflictException.class)

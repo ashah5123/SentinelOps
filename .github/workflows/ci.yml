@@ -121,7 +121,18 @@ jobs:
       # approval-replay rejection) are all plain JUnit/Mockito tests — no MCP client, network
       # transport, GPU, or paid model is required. McpPropertiesBindingTest loads the real shipped
       # application.yml the same way AlertsPropertiesBindingTest does.
-      - name: mvnw verify (unit, security, reliability/idempotency, migration, AI-triage, alert-ingestion, and MCP/proposal tests)
+      #
+      # Phase 14 (policy-controlled automated remediation engine): the
+      # com.sentinelops.incident.remediation.** unit tests also run here automatically — runbook
+      # YAML parsing/validation (including the three shipped example runbooks), the deny-by-default
+      # policy engine (authorization, blast-radius, maintenance-window, recent-failure, and
+      # risk-tier rules), the execution state machine's full transition matrix, and the scheduler's
+      # retry/backoff/circuit-breaker/rollback behavior (including the failed-health-check-triggers-
+      # automatic-rollback scenario, driven through the same SimulatedDeploymentRepository
+      # fault-injection hook the local demo script uses) are all plain JUnit/Mockito tests needing
+      # no database, Kubernetes cluster, message broker, or cache. RemediationPropertiesBindingTest
+      # loads the real shipped application.yml the same way AlertsPropertiesBindingTest does.
+      - name: mvnw verify (unit, security, reliability/idempotency, migration, AI-triage, alert-ingestion, MCP/proposal, and remediation tests)
         working-directory: services/incident-service
         run: ./mvnw -B verify
 

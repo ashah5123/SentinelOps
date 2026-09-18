@@ -1,0 +1,34 @@
+# Medium-risk: restarts a deployment. Requires single-approver human sign-off (policy engine
+# maps MEDIUM risk to REQUIRE_APPROVAL with required_approvals = 1), and rolls back automatically
+# if the post-restart health check fails.
+slug: restart-checkout-service
+version: 1
+title: Restart checkout-api after elevated error rate
+riskClassification: MEDIUM
+steps:
+  - name: restart-deployment
+    adapter: KUBERNETES_RESTART
+    parameters:
+      service: checkout-api
+      environment: staging
+    timeoutSeconds: 60
+    maxRetries: 1
+    backoffInitialMillis: 1000
+    backoffMultiplier: 2.0
+  - name: verify-health
+    adapter: HEALTH_CHECK
+    parameters:
+      service: checkout-api
+      environment: staging
+    timeoutSeconds: 30
+    maxRetries: 3
+    backoffInitialMillis: 2000
+    backoffMultiplier: 2.0
+rollbackSteps:
+  - name: rollback-deployment
+    adapter: KUBERNETES_ROLLBACK
+    parameters:
+      service: checkout-api
+      environment: staging
+    timeoutSeconds: 60
+    maxRetries: 1

@@ -54,6 +54,13 @@
       <groupId>org.springframework.kafka</groupId>
       <artifactId>spring-kafka</artifactId>
     </dependency>
+    <!-- Phase 14: parses versioned remediation-runbook YAML documents. Pinned explicitly rather
+         than relying on whichever version another dependency pulls in transitively. -->
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+      <version>2.3</version>
+    </dependency>
     <!-- Phase 12: local email notification delivery via Mailpit (see docker-compose's "mailpit"
          service) — never a paid/external mail provider. -->
     <dependency>

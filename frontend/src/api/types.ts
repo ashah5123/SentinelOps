@@ -272,3 +272,71 @@ export interface AgentProposal {
   executionResult: string | null;
   executionError: string | null;
 }
+
+export type RemediationExecutionStatus =
+  | "PROPOSED"
+  | "APPROVED"
+  | "SCHEDULED"
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "ROLLED_BACK"
+  | "CANCELLED"
+  | "DENIED";
+export type PolicyOutcome = "ALLOW" | "DENY" | "REQUIRE_APPROVAL";
+export type RemediationRisk = "LOW" | "MEDIUM" | "HIGH";
+export type RemediationStepStatus = "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "SKIPPED";
+
+export interface RemediationRunbook {
+  id: string;
+  slug: string;
+  version: number;
+  title: string;
+  riskClassification: RemediationRisk;
+  definitionYaml: string;
+  stepCount: number;
+  active: boolean;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface RemediationExecution {
+  id: string;
+  runbookId: string;
+  incidentId: string | null;
+  proposalId: string | null;
+  status: RemediationExecutionStatus;
+  dryRun: boolean;
+  requestedBy: string;
+  parameters: Record<string, unknown>;
+  blastRadius: Record<string, unknown>;
+  policyDecision: PolicyOutcome;
+  policyReason: string;
+  policyVersion: number;
+  requiredApprovals: number;
+  cancelRequested: boolean;
+  emergencyStop: boolean;
+  healthBefore: Record<string, unknown> | null;
+  healthAfter: Record<string, unknown> | null;
+  rollbackReason: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  rolledBackAt: string | null;
+}
+
+export interface RemediationStep {
+  id: string;
+  stepIndex: number;
+  stepName: string;
+  adapterType: string;
+  rollbackStep: boolean;
+  status: RemediationStepStatus;
+  attemptCount: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+}

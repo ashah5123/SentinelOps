@@ -12,6 +12,7 @@ import { IncidentDetail } from "./pages/IncidentDetail";
 import { AdminRecovery } from "./pages/AdminRecovery";
 import { AdminConnectorHealth } from "./pages/AdminConnectorHealth";
 import { AgentProposals } from "./pages/AgentProposals";
+import { Remediations } from "./pages/Remediations";
 import { Callback } from "./pages/Callback";
 import { SignedOut } from "./pages/SignedOut";
 
@@ -34,6 +35,7 @@ export function App() {
                         <Route path="/incidents" element={<IncidentQueue />} />
                         <Route path="/incidents/:id" element={<IncidentDetail />} />
                         <Route path="/proposals" element={<AgentProposals />} />
+                        <Route path="/remediations" element={<Remediations />} />
                         <Route
                           path="/admin/recovery"
                           element={

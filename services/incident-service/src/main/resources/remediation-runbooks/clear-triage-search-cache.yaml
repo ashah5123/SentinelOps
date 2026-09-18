@@ -1,0 +1,22 @@
+# Low-risk: clears a bounded cache namespace. No blast radius beyond the cache itself, and the
+# cache repopulates lazily on next read, so this is safe to auto-approve for RESPONDER actors.
+slug: clear-triage-search-cache
+version: 1
+title: Clear stale triage-search cache entries
+riskClassification: LOW
+steps:
+  - name: clear-cache
+    adapter: CACHE_CLEAR
+    parameters:
+      namespace: triage-search
+    timeoutSeconds: 10
+    maxRetries: 2
+    backoffInitialMillis: 200
+    backoffMultiplier: 2.0
+  - name: verify-health
+    adapter: HEALTH_CHECK
+    parameters:
+      service: incident-service
+      environment: staging
+    timeoutSeconds: 10
+    maxRetries: 1

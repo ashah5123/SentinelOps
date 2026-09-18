@@ -19,6 +19,10 @@ public final class ErrorCode {
   public static final String PROPOSAL_NOT_FOUND = "PROPOSAL_NOT_FOUND";
   public static final String PROPOSAL_CONFLICT = "PROPOSAL_CONFLICT";
   public static final String PROPOSAL_VALIDATION_ERROR = "PROPOSAL_VALIDATION_ERROR";
+  public static final String REMEDIATION_NOT_FOUND = "REMEDIATION_NOT_FOUND";
+  public static final String REMEDIATION_CONFLICT = "REMEDIATION_CONFLICT";
+  public static final String RUNBOOK_NOT_FOUND = "RUNBOOK_NOT_FOUND";
+  public static final String RUNBOOK_VALIDATION_ERROR = "RUNBOOK_VALIDATION_ERROR";
 
   private ErrorCode() {}
 }
