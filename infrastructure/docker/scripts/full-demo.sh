@@ -88,7 +88,8 @@ step "7-9/11 — policy evaluation, approval, controlled remediation execution, 
 bash "$SCRIPTS_DIR/remediation-demo.sh" "$BASE_URL"
 
 step "10/11 — audit logging and observability"
-echo "Audit trail: GET $BASE_URL/api/v1/audit (bearer token required)"
+echo "Audit trail: GET $BASE_URL/api/v1/admin/audit-events (ADMIN role required)"
+echo "Per-incident audit trail: GET $BASE_URL/api/v1/incidents/$DEMO_INCIDENT_ID/audit-events (ADMIN role required)"
 echo "Grafana:     http://localhost:${GRAFANA_PORT} (see infrastructure/docker/observability/grafana/dashboards/)"
 echo "Mailpit:     http://localhost:${MAILPIT_UI_PORT} (notification emails sent during this demo)"
 

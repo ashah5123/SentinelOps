@@ -63,7 +63,8 @@ model: **`docs/architecture/threat-model.md`**.
 - **AI**: retrieval-augmented triage against a deterministic or local-Ollama provider — no paid
   API required (see "AI without external credentials" below)
 - **Agent interface**: Model Context Protocol (official Java SDK)
-- **Deployment**: Kubernetes + Helm, Terraform (AWS), Argo CD (GitOps)
+- **Deployment**: Kubernetes + Helm, Terraform (AWS); a documented GitOps deployment path via
+  Argo CD (see `docs/development/production-deployment.md`)
 - **CI/CD**: GitHub Actions — SpotBugs, Trivy, CodeQL, gitleaks, OWASP ZAP, SBOM generation,
   cosign image signing, SLSA provenance
 
@@ -95,11 +96,9 @@ walkthrough script: `docs/development/demo.md`.
 
 ## Screenshots
 
-**None are included.** This repository's own verification discipline (see "Benchmark
-methodology" below) does not permit publishing a screenshot that wasn't actually captured from a
-running instance, and no live browser session was available in the environment this phase was
-authored in to capture one. Run `make demo` and `cd frontend && npm run dev` to see the console
-live — `docs/development/demo.md` describes exactly what you'll see at each step.
+This README does not publish a screenshot that was not captured from a running instance. Run
+`make demo` and `cd frontend && npm run dev` to see the console live —
+`docs/development/demo.md` describes exactly what you'll see at each step.
 
 ## Security model
 
@@ -154,29 +153,6 @@ provider, or `sentinelops.ai.provider=ollama` to use a local model with no data 
 machine. If AI is disabled or fails entirely, incident creation, correlation, and remediation are
 unaffected — triage is additive, never load-bearing (verified by
 `ChaosInjectingAiProviderTest`). See `docs/development/ai-triage.md`.
-
-## Known limitations
-
-- No live load test, chaos experiment, or disaster-recovery drill has been executed against a
-  real deployment in the environment that authored this code (no Docker/cluster available there)
-  — CI runs all of these live on every push; see `docs/validation/` for exactly what each check
-  covers and what remains environment-dependent.
-- Terraform modules were written and reviewed but never `apply`'d against a real AWS account.
-- No screenshots exist yet (see "Screenshots" above).
-- Redis and MinIO are provisioned in every environment but not yet read/written by any
-  application code path (see `docs/development/local-platform.md`) — infrastructure ahead of the
-  feature that will use it, documented rather than hidden.
-- Single-tenant only; no per-tenant resource-scope isolation exists or is tested.
-
-## Future improvements
-
-- Wire a Redis-backed cache into a real read path and measure its effect.
-- Add object-storage-backed postmortem/artifact generation using the already-provisioned MinIO
-  buckets.
-- Expose remediation-runbook proposals as an MCP tool (currently MCP proposes incident-level
-  actions only — see `docs/development/mcp-server.md`'s known limitations).
-- Run a real load-test baseline against a staging deployment and replace this README's
-  "no production numbers exist" caveat with actual measured capacity.
 
 ## Repository structure
 

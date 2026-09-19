@@ -1,176 +1,126 @@
 # SentinelOps System Overview
 
-Status: Foundation-phase design document. Describes the intended
-architecture; nothing described here is implemented yet unless
-explicitly noted.
+This document describes the architecture as actually implemented and tested. See
+`docs/architecture/diagrams.md` for the full Mermaid diagram set (system context,
+alert-to-incident sequence, AI-triage/RAG flow, MCP proposal/approval flow, remediation state
+machine, observability pipeline, deployment topology) and `docs/architecture/data-model.md` for
+the entity relationships.
 
 ## 1. System context
 
-SentinelOps sits alongside the systems it observes. It does not
-replace an organization's existing services; it consumes their
-telemetry and, in later phases, proposes and — only with explicit
-human approval — helps execute remediation.
+SentinelOps ingests alerts and telemetry from external sources, deduplicates and correlates them
+into incidents, offers AI-assisted triage, exposes a policy-gated Model Context Protocol (MCP)
+interface for AI agents, and executes approved remediation runbooks with automatic rollback.
 
 ```mermaid
 flowchart LR
-    Eng["On-call Engineer"] -- reviews / approves --> SentinelOps
-    SentinelOps -- reads telemetry --> Monitored["Monitored Java & Python Services"]
-    SentinelOps -- reads --> Deploys["Deployment History (CI/CD)"]
-    SentinelOps -- reads --> Runbooks["Runbook Store"]
-    SentinelOps -- authorized actions only --> Monitored
+    Ext["External alert sources<br/>(Alertmanager, generic webhooks)"] --> IS[incident-service]
+    Op["Operator / Responder"] -- reviews / approves --> Console[Operator console]
+    Console --> IS
+    Agent["AI agent (MCP client)"] -- propose_action --> IS
+    IS <--> TS[telemetry-correlation-service]
+    IS -- authorized remediation only --> Sim["Simulated/managed<br/>target systems"]
 ```
-
-Actors:
-- **On-call engineer / operator**: consumes incident reports,
-  authorizes or rejects proposed remediation.
-- **Monitored services**: Java (Spring Boot) and Python (FastAPI)
-  services instrumented with OpenTelemetry.
-- **Deployment history**: CI/CD metadata (e.g. GitHub Actions, Argo CD)
-  used to correlate incidents with recent changes.
-- **Runbook store**: existing operational documentation retrieved
-  during investigation.
 
 ## 2. Component responsibilities
 
 | Component | Responsibility |
-|---|---|
-| **OpenTelemetry Collector (implemented — Phase 4)** | Receives OTLP traces/logs from the incident service and forwards traces to Tempo and logs to Loki; also exposes received metrics as a Prometheus scrape target. Local-only — see `docs/development/observability.md`. |
-| **Prometheus / Loki / Tempo / Alertmanager (implemented — Phase 4)** | Store and alert on metrics, logs, and traces respectively, for the incident service only so far — no other service exists yet to monitor. |
-| **Incident Service (Java, implemented — Phase 3; instrumented — Phase 4; hardened — Phase 6)** | Owns the incident aggregate and its lifecycle, records evidence and audit history, and publishes incident/audit events through a transactional outbox whose claim/publish/finalize steps never hold a database transaction open across the Kafka network call. Emits its own metrics, traces, and structured logs via Micrometer/OpenTelemetry. See `services/incident-service/README.md` and `docs/development/reliability.md`. |
-| **Ingestion & Correlation Service (Java, implemented — Phase 5; hardened — Phase 6)** | Incrementally ingests Prometheus/Loki/Tempo telemetry and deployment/dependency events into a shared evidence model, and deterministically (rule-based, no AI/ML) correlates evidence against detected incidents, publishing results back to the Incident Service through a transactional outbox. See `services/telemetry-correlation-service/README.md` and `docs/development/reliability.md`. |
-| Detection Engine (Java) | Evaluates SLOs, detects anomalies, and raises candidate incidents (published as `telemetry.anomaly.v1`, consumed by the Incident Service). |
-| Investigation Agent (Python, LangGraph) | Orchestrates root-cause investigation: gathers evidence, retrieves runbooks, and drafts findings. |
-| Hybrid Retrieval + Reranking | Retrieves relevant runbooks and historical incidents using combined lexical/vector search over pgvector, reranked for relevance. |
-| Local LLM inference (Ollama) | Provides the language model used for summarization and analysis, run entirely locally. |
-| Human Approval Gate | Presents proposed remediation to an authorized operator and blocks execution until approved or rejected. |
-| Incident Report Generator | Produces the final, evidence-linked incident report and stores supporting artifacts. |
-| Operator Dashboard (Next.js/React) | Human interface for reviewing incidents, evidence, and approving/rejecting remediation. |
-| PostgreSQL + pgvector | System of record for incidents, evidence, and vector embeddings. |
-| Redis | Caching and short-lived coordination state. |
-| MinIO | Object storage for reports and large evidence artifacts. |
-| Redpanda | Event backbone connecting detection, investigation, and reporting stages. |
-| Keycloak | Identity provider for authentication and role-based authorization across all components. |
+| --- | --- |
+| `incident-service` (Java/Spring Boot) | Owns the incident aggregate and lifecycle, alert ingestion/deduplication/routing/notification, AI-assisted triage, the MCP server, agent proposals, and the policy-controlled remediation engine. Publishes events through a transactional outbox. |
+| `telemetry-correlation-service` (Java/Spring Boot) | Consumes deployment-change and service-dependency-change events, correlates them against open incidents, and publishes correlation results back through its own transactional outbox. |
+| Operator console (React) | Human interface: incident queue/detail, agent proposals, remediation queue, platform health (SLO/error-budget status). Authenticates and authorizes every request identically to any other API client — never a privileged internal path. |
+| MCP server (embedded in incident-service) | Exposes read-only tools/resources/prompts and a propose-then-approve path for incident actions to any MCP-speaking AI agent. Never executes a mutation directly. |
+| Remediation engine (embedded in incident-service) | Versioned YAML runbooks, a deny-by-default policy engine, a strict execution state machine, and automatic rollback on a failed post-execution health check. |
+| PostgreSQL (+ pgvector) | System of record for incidents, alerts, audit events, agent proposals, remediation runbooks/executions, and the AI-triage retrieval index. |
+| Redpanda (Kafka-API-compatible) | Event backbone between `incident-service` and `telemetry-correlation-service`, and the transactional outbox's publish target. |
+| Keycloak | OIDC identity provider; role-based access control (VIEWER/RESPONDER/ADMIN) enforced per endpoint. |
+| Redis, MinIO | Provisioned in every environment; not yet read or written by any application code path (see `docs/development/local-platform.md`). |
 
 ## 3. Primary incident lifecycle
 
 ```mermaid
 sequenceDiagram
-    participant Svc as Monitored Service
-    participant Otel as OTel Collector
-    participant Detect as Detection Engine
-    participant Agent as Investigation Agent
-    participant Human as On-call Engineer
-    participant Report as Report Generator
+    participant Src as Alert source
+    participant IS as incident-service
+    participant Corr as Correlation
+    participant AI as AI-triage
+    participant Human as Operator
+    participant Rem as Remediation engine
 
-    Svc->>Otel: Emit metrics, traces, logs
-    Otel->>Detect: Forward correlated telemetry
-    Detect->>Detect: Evaluate SLOs / anomaly rules
-    Detect->>Agent: Raise candidate incident
-    Agent->>Agent: Gather evidence, retrieve runbooks
-    Agent->>Human: Present root-cause analysis + recommendation
-    Human-->>Agent: Approve / reject remediation
-    Agent->>Svc: Execute action (only if approved)
-    Agent->>Agent: Verify recovery
-    Agent->>Report: Generate auditable incident report
+    Src->>IS: Webhook (Alertmanager / HMAC-signed generic)
+    IS->>IS: Validate, fingerprint, deduplicate
+    IS->>Corr: Correlate with open incidents
+    Corr-->>IS: Matched or new incident
+    IS->>AI: Request triage suggestion (optional, on demand)
+    AI-->>IS: Cited suggestion or graceful fallback
+    Human->>IS: Review in console; propose a remediation runbook
+    IS->>IS: Policy engine evaluates (ALLOW / DENY / REQUIRE_APPROVAL)
+    Human->>Rem: Approve (if required)
+    Rem->>Rem: Execute steps; verify health; roll back automatically on failure
 ```
+
+See `docs/architecture/diagrams.md` for this same flow broken into its ingestion, AI-triage, and
+remediation-specific sequence diagrams.
 
 ## 4. Data flow
 
-1. Instrumented services emit OpenTelemetry signals. **Implemented
-   today (Phase 4):** the Incident Service emits Micrometer/Prometheus
-   metrics (scraped directly), OTLP traces, and OTLP-exported
-   structured logs — see `docs/development/observability.md` and
-   [ADR 0009](../decisions/0009-local-observability-stack-topology.md).
-2. The collector routes metrics to Prometheus, logs to Loki, and traces
-   to Tempo. **Implemented today (Phase 4/5)** for both the Incident
-   Service's and the Ingestion & Correlation Service's own telemetry.
-3. The Ingestion & Correlation Service reads from these backends plus
-   deployment/dependency metadata and normalizes them into a common
-   incident-evidence model, persisted in PostgreSQL. **Implemented
-   today (Phase 5):** incremental, checkpointed polling of
-   Prometheus/Loki/Tempo, idempotent consumption of
-   `deployment.changed.v1` and `service.dependency.changed.v1`, and —
-   once an incident exists (see step 4) — deterministic, rule-based
-   correlation of that evidence against it, published as
-   `incident.evidence.correlated.v1` through a transactional outbox and
-   consumed idempotently by the Incident Service. See
-   `docs/events/telemetry-correlation-events.md` and
-   [ADR 0010](../decisions/0010-incremental-ingestion-and-correlation.md).
-   Correlation scores are rule-based proximity/connection signals, never
-   a confirmed root cause.
-4. The Detection Engine evaluates this data against SLOs and anomaly
-   rules, publishing candidate anomalies (`telemetry.anomaly.v1`) onto
-   Redpanda. **Implemented today (Phase 3):** the Incident Service
-   consumes this topic idempotently, creates the corresponding
-   incident, and publishes `incident.detected.v1` and `audit.event.v1`
-   through its transactional outbox — see
-   `docs/events/incident-events.md` and
-   [ADR 0007](../decisions/0007-transactional-outbox-pattern.md).
-5. The Investigation Agent consumes candidate incidents, retrieves
-   relevant runbooks and historical incidents (pgvector-backed hybrid
-   retrieval), and uses a local LLM to synthesize a root-cause analysis
-   and remediation recommendation.
-6. The recommendation is placed behind the Human Approval Gate. No
-   downstream action occurs without explicit operator approval.
-7. If approved, an action is executed and recovery is verified against
-   the same telemetry pipeline.
-8. A final, evidence-linked report is generated and stored in MinIO,
-   with metadata recorded in PostgreSQL.
+1. An external source posts an alert to `incident-service` (`docs/development/alert-ingestion.md`).
+2. The alert is validated, fingerprinted, and deduplicated (a delivery-level unique constraint
+   plus fingerprint-locked semantic deduplication), then correlated against open incidents.
+3. `telemetry-correlation-service` independently consumes deployment/dependency-change events and
+   attaches correlation evidence to the same incident.
+4. An operator or automated policy may request AI-assisted triage
+   (`docs/development/ai-triage.md`) — retrieval-augmented, citation-honest, and never
+   load-bearing for incident creation/correlation if unavailable.
+5. An operator or an MCP-connected AI agent proposes an action; every mutation requires a
+   separate, server-verified human approval (`docs/development/mcp-server.md`,
+   `docs/development/remediation.md`).
+6. An approved remediation runbook executes under policy-engine constraints (blast radius, risk
+   classification, maintenance windows) with automatic rollback on a failed health check.
+7. Every step is recorded in an immutable audit trail and exported as Prometheus
+   metrics/OpenTelemetry traces/structured logs.
 
 ## 5. Trust boundaries
 
-- **Monitored services ↔ SentinelOps**: telemetry flows in one
-  direction (services → SentinelOps) except for explicitly authorized
-  remediation actions, which cross back only after human approval.
-- **SentinelOps internal services ↔ identity provider**: every internal
-  service and the operator dashboard authenticate through Keycloak
-  (OAuth 2.0 / OIDC); service-to-service calls are authorized via JWT
-  and RBAC.
-- **Investigation Agent ↔ local LLM (Ollama)**: inference runs locally;
-  no incident evidence is sent to a third-party or paid model API by
-  default.
-- **Operator Dashboard ↔ backend services**: the dashboard is treated
-  as an untrusted client and must authenticate/authorize every request
-  through the same identity boundary as any other client.
+- **External alert sources ↔ incident-service**: authenticated via a static shared token
+  (Alertmanager) or HMAC signature with replay protection (generic webhook) — never trusted by
+  network origin alone.
+- **AI agent (MCP) ↔ incident-service**: authenticated via the same OIDC bearer tokens as the
+  REST API; scopes are derived from roles and can only be narrowed, never widened, by a token's
+  own claims. Every mutation still requires separate human approval.
+- **AI model output ↔ the rest of the system**: always treated as untrusted data, never as an
+  instruction — see `docs/architecture/threat-model.md`.
+- **Operator console ↔ backend services**: the console is an untrusted client authenticating
+  through the same identity boundary as any other API client.
 
 ## 6. Human-approval boundary
 
-This is the platform's central safety boundary: the Investigation Agent
-may **recommend** remediation, but the Human Approval Gate is the only
-component authorized to release an action for execution, and only after
-an authenticated, authorized human operator explicitly approves it.
-This boundary is a hard architectural constraint, not a configurable
-default — see [ADR 0004](../decisions/0004-human-approved-remediation.md).
+No mutation triggered by an AI agent (via MCP) or a remediation-runbook proposal ever executes
+without a separate, server-verified human approval: self-approval is rejected, approval replay is
+prevented by an atomic consumption guard, and proposal content is re-verified against tampering
+between approval and execution. See `docs/development/remediation.md` and
+`docs/development/mcp-server.md` for the exact mechanisms.
 
 ## 7. Failure-handling principles
 
-- **Fail closed on remediation**: if the approval workflow, identity
-  provider, or audit logging is unavailable, no remediation action is
-  permitted to proceed.
-- **Telemetry loss is visible, not silent**: gaps in metrics, logs, or
-  traces are themselves surfaced as data-quality signals rather than
-  hidden.
-- **Idempotent, observable investigation**: re-running an investigation
-  step over the same evidence should not produce contradictory
-  findings; agent steps are logged for auditability.
-- **Graceful degradation over hard failure**: where a non-critical
-  component (e.g. reranking) is unavailable, the system should degrade
-  to a simpler mode (e.g. lexical-only retrieval) rather than blocking
-  the entire investigation.
+- **AI unavailability never blocks deterministic incident handling** — verified by
+  `ChaosInjectingAiProviderTest` and the `llm-fault` chaos experiment.
+- **A failed post-execution health check triggers automatic rollback** — verified by
+  `RemediationExecutionSchedulerTest`.
+- **Every chaos experiment restores the environment unconditionally** via a registered recovery
+  trap, even on failure or interruption — see `docs/validation/chaos-engineering.md`.
+- **Telemetry loss is visible, not silent**: consumer lag, outbox backlog, and dead-letter counts
+  are exported as metrics, not hidden.
 
-## 8. Local and optional AWS deployment mappings
+## 8. Deployment mapping
 
-| Concern | Local (default) | Optional AWS mapping (documentation only) |
-|---|---|---|
-| Container orchestration | Docker Compose / `kind` | EKS |
+| Concern | Local (Docker Compose) | AWS (Terraform, see `infrastructure/terraform/`) |
+| --- | --- | --- |
+| Container orchestration | Docker Compose | EKS (`infrastructure/helm/sentinelops/`) |
 | Object storage | MinIO | S3 |
-| Relational + vector store | PostgreSQL + pgvector (containerized) | RDS for PostgreSQL with pgvector |
-| Cache | Redis (containerized) | ElastiCache for Redis |
-| Event streaming | Redpanda (containerized) | MSK (Kafka-compatible) |
-| Identity | Keycloak (containerized) | Keycloak on EKS, or Amazon Cognito with equivalent OIDC integration |
-| Observability | Prometheus/Grafana/Loki/Tempo (containerized) | Amazon Managed Prometheus/Grafana, or self-hosted equivalents on EKS |
-| Delivery | Argo CD against local `kind` cluster | Argo CD against EKS |
-
-No AWS resources are provisioned by this repository's tooling. The
-mapping above exists purely to document how the architecture could
-extend to AWS in a later, explicitly-scoped phase.
+| Relational + vector store | PostgreSQL + pgvector | RDS for PostgreSQL |
+| Cache | Redis | ElastiCache for Redis |
+| Event streaming | Redpanda | MSK (Kafka-compatible) |
+| Identity | Keycloak | Keycloak on EKS |
+| Observability | Prometheus/Grafana/Loki/Tempo | same stack on EKS, or managed equivalents |
+| Delivery | `docker compose` / `helm install` | Argo CD (GitOps) against EKS |

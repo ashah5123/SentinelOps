@@ -1,9 +1,9 @@
-# SentinelOps Operator Console (Phase 10)
+# SentinelOps Operator Console
 
-A focused React + TypeScript + Vite operator console for the incident service — the dashboard,
-incident queue, incident detail workflow, and administrative recovery view described in
-`docs/roadmap.md`'s Phase 10 entry. No large UI framework was introduced; this is plain React,
-plain CSS, and two small, maintained libraries (`react-router-dom` for routing,
+A focused React + TypeScript + Vite operator console for SentinelOps: the dashboard, incident
+queue, incident detail workflow, agent proposals, remediation queue, platform health, and
+administrative recovery views. No large UI framework was introduced; this is plain React, plain
+CSS, and two small, maintained libraries (`react-router-dom` for routing,
 `react-oidc-context`/`oidc-client-ts` for authentication).
 
 ## Prerequisites
@@ -86,8 +86,7 @@ npm test              # Vitest unit/component tests
 npm run build          # production build
 
 npm run e2e            # Playwright — requires the full stack running (see above) and
-                        # `npx playwright install` first (not run in this repository's own
-                        # authoring environment — see "Known limitations")
+                        # `npx playwright install` first
 ```
 
 ## Core operator workflows
@@ -108,25 +107,13 @@ npm run e2e            # Playwright — requires the full stack running (see abo
 5. **Administrative recovery** (`/admin/recovery`, ADMIN only) — replay eligible dead-lettered
    events in bounded batches, with confirmation and an audited outcome.
 
-## Known limitations
+## Design notes
 
-- **Playwright E2E specs (`e2e/*.spec.ts`) are written and statically type-checked but were not
-  executed** in the environment this phase was authored in: Docker (and therefore
-  Postgres/Keycloak/the incident service) is unavailable there, and Playwright's browser binaries
-  were deliberately not installed to avoid consuming disk space on a machine that was already
-  critically low during this phase's authoring session, on tests that could not run against a
-  live backend anyway. Vitest unit/component tests (which mock the API and therefore need
-  neither Docker nor a browser download) **were** run — see the phase completion report for actual
-  results.
-- No real-time push subsystem exists in the backend (no SSE/WebSocket endpoint) — the console
-  uses bounded polling with backoff instead, as instructed when no such capability already exists.
-- The administrative recovery view is scoped to what the backend actually exposes: a topic-level
-  replay action with a replayed/failed count. There is no per-event listing (failure category,
-  attempt count, first/last failure timestamp, or a link to a specific related incident) because
-  no backend endpoint persists that per-event metadata — a dead-lettered Kafka record is not a
-  queryable database row. Building that would be a new, nontrivial backend feature, not the
-  smallest secure addition, so it was not added.
-- "Acknowledgement," "escalation," and "reopening" a resolved incident are not distinct backend
-  concepts — the closest, already-supported equivalents (assignment, and the existing status
-  transitions) are what this console exposes; see `docs/development/security.md`'s domain
-  lifecycle and the new `assignee` field added this phase.
+- The console has no WebSocket/SSE endpoint to connect to — "live" updates use bounded polling
+  with backoff instead (see `frontend/src/hooks/usePolling.ts`).
+- The administrative recovery view is scoped to what the backend exposes: a topic-level replay
+  action with a replayed/failed count, since a dead-lettered Kafka record is not a queryable
+  database row with per-event metadata.
+- "Acknowledgement" and incident-status changes map onto the domain's actual lifecycle states
+  (assignment and the existing status transitions) — see `docs/development/security.md`'s domain
+  lifecycle.

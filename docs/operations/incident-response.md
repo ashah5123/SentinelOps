@@ -38,9 +38,10 @@ the on-call operator.
 
 ## Post-incident
 
-Every platform incident should result in: an audit-trail review (`GET /api/v1/audit`, or the
-console's audit view) covering the incident window, and — if a chaos experiment or a real
-dependency failure was involved — a note in this file's "lessons learned" log below.
+Every platform incident should result in: an audit-trail review (`GET
+/api/v1/admin/audit-events`, ADMIN role required) covering the incident window, and — if a chaos
+experiment or a real dependency failure was involved — a note in this file's "lessons learned"
+log below.
 
 ### Lessons learned log
 

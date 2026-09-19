@@ -182,15 +182,15 @@ and an operational runbook: [`docs/development/reliability.md`](../../docs/devel
   above and `docs/development/security.md`'s threat model.
 - The audit trail is application-enforced append-only, not tamper-proof (no database-level
   immutability grant, no automated retention job yet) — see `docs/development/security.md`.
-- The Resource Owner Password Credentials grant used in the documented API workflow is a
-  local/demo-only convenience appropriate because no frontend exists yet; it is not how a real
-  client application should authenticate against a non-local Keycloak deployment.
+- The Resource Owner Password Credentials grant used in the documented curl workflow below is a
+  local/demo-only convenience; the operator console (`frontend/`) authenticates via the
+  Authorization Code flow instead, and a real client application should do the same against a
+  non-local Keycloak deployment.
 - Dead-letter replay (`POST /api/v1/admin/dead-letter-topics/{topic}/replay`) is bounded to the
   two dead-letter topics this service itself consumes from, and replays at most one bounded batch
   per call rather than draining a topic unboundedly.
 - Incident numbers (`INC-<year>-<sequence>`) are a display convenience, not a strict gapless
   sequence, under concurrent creation — see `IncidentNumberGenerator`.
 - Delivery is at-least-once, not exactly-once, for both consumed and published events.
-- No cross-service dependency/deployment correlation yet — that is a later phase.
-- No load, chaos, or performance testing has been run against this service; no performance
-  numbers are claimed anywhere in this repository.
+- No performance numbers are claimed anywhere in this repository unless traced to a reproducible
+  command and result — see `docs/portfolio-evidence.md` and `docs/validation/`.

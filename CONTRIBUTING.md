@@ -8,9 +8,9 @@ the project.
 SentinelOps has reached v1.0: incident ingestion/correlation, AI-assisted triage, a secure MCP
 agent interface, a policy-controlled remediation engine, chaos/SLO/disaster-recovery validation,
 and a Kubernetes/Terraform production deployment path are all implemented and tested — see the
-root `README.md` for the full capability list and `docs/roadmap.md` for what came before this
-point. This remains a single-author portfolio project (see `LICENSE`); contributions are welcome
-but reviewed against the same standards documented below.
+root `README.md` for the full capability list and `docs/decisions/` for the architecture
+decisions made along the way. This remains a single-author portfolio project (see `LICENSE`);
+contributions are welcome but reviewed against the same standards documented below.
 
 ## Ground rules
 
