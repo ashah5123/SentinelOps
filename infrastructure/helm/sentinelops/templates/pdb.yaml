@@ -1,0 +1,19 @@
+{{- $root := . -}}
+{{- range $component, $svc := dict "incident-service" $root.Values.incidentService "telemetry-correlation-service" $root.Values.telemetryCorrelationService }}
+{{- if and $svc.enabled $svc.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $component }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  minAvailable: {{ $svc.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "sentinelops.selectorLabels" (dict "component" $component "Release" $root.Release "Chart" $root.Chart) | nindent 6 }}
+{{- end }}
+{{- end }}

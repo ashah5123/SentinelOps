@@ -1,0 +1,38 @@
+# Staging overrides — production-shaped (autoscaling, PDBs, TLS, topology spread all on) but at
+# roughly half the capacity, and pointed at staging's own managed backing services.
+global:
+  environment: staging
+  namespace: sentinelops-staging
+
+incidentService:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+  podDisruptionBudget:
+    minAvailable: 1
+
+telemetryCorrelationService:
+  replicaCount: 1
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+  podDisruptionBudget:
+    minAvailable: 1
+
+ingress:
+  host: staging.sentinelops.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  tls:
+    secretName: sentinelops-staging-tls
+
+externalDependencies:
+  postgres:
+    host: sentinelops-staging.abcdef123456.us-east-1.rds.amazonaws.com
+  redis:
+    host: sentinelops-staging.abcdef.ng.0001.use1.cache.amazonaws.com
+  kafka:
+    brokers: b-1.sentinelops-staging.abcdef.c2.kafka.us-east-1.amazonaws.com:9092
+  keycloak:
+    issuerUri: https://auth-staging.sentinelops.example.com/realms/sentinelops

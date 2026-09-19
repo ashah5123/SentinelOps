@@ -1,405 +1,200 @@
 # SentinelOps
 
-**Cloud-native incident detection and investigation platform.**
+An incident-detection, investigation, and remediation platform: ingests alerts and telemetry,
+deduplicates and correlates them into incidents, offers AI-assisted triage with cited evidence,
+exposes a policy-gated Model Context Protocol (MCP) interface for AI agents, and executes
+approved remediation runbooks with automatic rollback on failure — all with an immutable audit
+trail and full observability.
 
-Status: **Foundation** — repository scaffolding, architecture, a
-local data/event-streaming platform (Phase 2), an incident-management
-control-plane service (Phase 3), a local observability baseline
-(Phase 4: OpenTelemetry Collector, Prometheus, Grafana, Loki, Tempo,
-Alertmanager), a telemetry ingestion and deterministic correlation
-service (Phase 5), reliability/failure-recovery hardening for both
-Java services (Phase 6), authentication/authorization/audit
-logging for the incident service via a local Keycloak realm (Phase 7),
-a reproducible, local, k6-based performance-benchmarking harness
-for the incident service (Phase 8 — built but not yet executed), and
-hardened CI/CD, database migration release-safety, PostgreSQL backup/
-restore, data-integrity verification, and a documented release/
-rollback procedure (Phase 9), and a React/TypeScript operator console
-(dashboard, incident queue, incident detail, admin recovery — Phase 10,
-`frontend/`) exist. Everything requiring Docker or a browser download
-across Phases 8-10 is built and statically validated but not yet
-executed in this authoring environment — see below.
-No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
-or remediation execution are implemented yet. See
-[docs/roadmap.md](docs/roadmap.md) for current phase status, including
-outstanding runtime-verification items.
+Built and authored by **Aarav Shah** as a single-developer portfolio project, in sixteen
+incremental phases, each building on tested, working functionality from the last.
 
-## Overview
+## Problem and motivation
 
-SentinelOps is designed to help teams running distributed Java and
-Python services detect reliability incidents faster, understand *why*
-they happened, and act on them safely. It correlates metrics, traces,
-and logs; detects SLO violations; ties incidents back to recent
-deployments and service dependencies; and produces evidence-backed
-root-cause analysis with recommended remediation — while requiring
-explicit human authorization before any operational action is taken.
+Real incident response is fragmented: alerts arrive from multiple sources with no deduplication,
+correlation is manual, triage relies on tribal knowledge, and remediation is either fully manual
+(slow) or fully automated (risky, with no approval gate or rollback). SentinelOps is a
+from-scratch exploration of what a smaller, coherent version of that pipeline looks like when
+every stage — ingestion, correlation, triage, proposal, approval, execution, rollback, audit — is
+built deliberately, tested, and deployable, rather than assumed away.
 
-## Problem being solved
+## Major capabilities
 
-Modern distributed systems generate enormous volumes of telemetry, but
-turning that telemetry into a trustworthy, actionable incident
-narrative is still largely manual. On-call engineers spend the first,
-most critical minutes of an incident correlating dashboards, logs, and
-recent deployments by hand. SentinelOps aims to automate that
-correlation and investigation work — without automating away human
-judgment on remediation.
+| Capability | Where |
+| --- | --- |
+| Multi-source alert ingestion, deduplication, correlation, routing | `docs/development/alert-ingestion.md` |
+| Telemetry correlation (deployment/dependency-change events) | `docs/architecture/system-overview.md` |
+| Role-based auth (Keycloak OIDC), audit logging | `docs/development/security.md` |
+| AI-assisted triage with cited, retrieval-grounded evidence and graceful fallback | `docs/development/ai-triage.md` |
+| Operator console (React) | `frontend/README.md` |
+| Secure MCP server: read-only tools, propose-then-approve for every mutation | `docs/development/mcp-server.md` |
+| Policy-controlled remediation: versioned runbooks, deny-by-default policy engine, two-person approval, automatic rollback | `docs/development/remediation.md` |
+| Chaos-engineering framework (11 experiments), SLO/error-budget engine, disaster-recovery exercises | `docs/validation/` |
+| Kubernetes/Helm, Terraform (AWS), GitOps-ready CI/CD | `infrastructure/helm/`, `infrastructure/terraform/`, this document's "Deployment options" |
 
-## Planned capabilities
-
-- Continuous monitoring of distributed Java and Python services.
-- Correlated collection of metrics, traces, and logs (OpenTelemetry).
-- Automated detection of reliability incidents and SLO violations.
-- Correlation of incidents with recent deployments and known service
-  dependencies.
-- Retrieval of relevant operational runbooks via hybrid search.
-- Generation of evidence-backed root-cause analysis.
-- Remediation recommendations, gated behind explicit human approval.
-- Post-remediation recovery verification and auditable incident
-  reporting.
-
-None of the above is implemented yet; this repository currently
-contains only foundation-phase scaffolding.
-
-## Planned technology stack
-
-| Layer | Technology |
-|---|---|
-| Backend services | Java 21, Spring Boot; Python, FastAPI |
-| Frontend | Next.js, React, TypeScript |
-| Streaming | Redpanda (Kafka-compatible API) |
-| Storage | PostgreSQL + pgvector, Redis, MinIO |
-| Orchestration | Docker Compose (local), Kubernetes via `kind`, Helm |
-| Infrastructure as code | Terraform |
-| Delivery | Argo CD, GitHub Actions |
-| Observability | OpenTelemetry, Prometheus, Grafana, Loki, Tempo, Alertmanager |
-| Identity | Keycloak (OAuth 2.0, OIDC, JWT, RBAC) |
-| AI / agents | LangGraph, Ollama (local inference), hybrid retrieval and reranking |
-| Testing & security | JUnit, pytest, Testcontainers, Playwright, Pact, k6, Trivy, CodeQL, controlled failure testing |
-
-## High-level architecture
+## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Sources["Monitored Systems"]
-        JavaSvc["Java / Spring Boot services"]
-        PySvc["Python / FastAPI services"]
-    end
-
-    subgraph Telemetry["Telemetry Pipeline"]
-        OTel["OpenTelemetry Collector"]
-        Prom["Prometheus"]
-        Loki["Loki"]
-        Tempo["Tempo"]
-        Alert["Alertmanager"]
-    end
-
-    subgraph Platform["SentinelOps Platform"]
-        Ingest["Ingestion & Correlation Service (Java)"]
-        Detect["Detection Engine (Java)"]
-        Agent["Investigation Agent (Python, LangGraph)"]
-        Retrieval["Hybrid Retrieval + Reranking"]
-        LLM["Ollama (local inference)"]
-        Approval["Human Approval Gate"]
-        Report["Incident Report Generator"]
-    end
-
-    subgraph Stores["Data Stores"]
-        PG["PostgreSQL + pgvector"]
-        Redis["Redis"]
-        MinIO["MinIO"]
-        Kafka["Redpanda"]
-    end
-
-    subgraph UX["Operator Interface"]
-        UI["Next.js / React Dashboard"]
-        Oncall["On-call Engineer"]
-    end
-
-    JavaSvc --> OTel
-    PySvc --> OTel
-    OTel --> Prom
-    OTel --> Loki
-    OTel --> Tempo
-    Prom --> Alert
-
-    Prom --> Ingest
-    Loki --> Ingest
-    Tempo --> Ingest
-    Alert --> Detect
-    Ingest --> Kafka
-    Kafka --> Detect
-    Detect --> Agent
-    Agent --> Retrieval
-    Retrieval --> PG
-    Agent --> LLM
-    Agent --> Report
-    Report --> MinIO
-    Ingest --> PG
-    Detect --> Redis
-
-    Agent --> Approval
-    Approval --> Oncall
-    Oncall -->|authorizes| Approval
-    Approval -.->|no auto-execution without approval| Detect
-
-    Report --> UI
-    UI --> Oncall
+    operator[Operator / Responder] --> console[Operator console]
+    aiClient[AI agent, via MCP] --> incidentSvc
+    external[Alertmanager / webhooks] --> incidentSvc
+    console --> incidentSvc[incident-service]
+    incidentSvc <--> telemetrySvc[telemetry-correlation-service]
+    incidentSvc --> postgres[(PostgreSQL)]
+    telemetrySvc --> postgres
+    incidentSvc <--> kafka[[Kafka-compatible streaming]]
+    telemetrySvc <--> kafka
+    incidentSvc <-->|OIDC| keycloak[Keycloak]
 ```
 
-## Security principles
+Full diagram set (system context, alert-to-incident sequence, AI-triage/RAG flow, MCP
+proposal/approval flow, remediation state machine, observability pipeline, deployment topology):
+**`docs/architecture/diagrams.md`**. Data model: **`docs/architecture/data-model.md`**. Threat
+model: **`docs/architecture/threat-model.md`**.
 
-- **Human-approved remediation**: no operational or remediation action
-  is ever executed automatically. Every recommendation requires
-  explicit human authorization before anything touches a real system.
-- **Least privilege and standard identity protocols**: authentication
-  and authorization go through Keycloak using OAuth 2.0, OIDC, and JWT,
-  with role-based access control.
-- **No secrets in source control**: local configuration is derived from
-  `.env.example`; real credentials are never committed.
-- **Defense-in-depth for the software supply chain**: dependency and
-  container scanning (Trivy) and static analysis (CodeQL) are part of
-  the intended CI pipeline.
-- **Auditable by design**: every incident investigation produces a
-  reviewable, evidence-backed report.
+## Technology stack
 
-## Local-first, zero-cost development
+- **Backend**: Java 21, Spring Boot 3.4 (`incident-service`, `telemetry-correlation-service`)
+- **Frontend**: React + TypeScript, Vite, Vitest, Playwright
+- **Data**: PostgreSQL (+ pgvector), Redis, Redpanda (Kafka-API-compatible), MinIO (S3-compatible)
+- **Auth**: Keycloak (OIDC, RBAC)
+- **Observability**: OpenTelemetry, Prometheus, Grafana, Loki, Tempo, Alertmanager
+- **AI**: retrieval-augmented triage against a deterministic or local-Ollama provider — no paid
+  API required (see "AI without external credentials" below)
+- **Agent interface**: Model Context Protocol (official Java SDK)
+- **Deployment**: Kubernetes + Helm, Terraform (AWS), Argo CD (GitOps)
+- **CI/CD**: GitHub Actions — SpotBugs, Trivy, CodeQL, gitleaks, OWASP ZAP, SBOM generation,
+  cosign image signing, SLSA provenance
 
-All default development and demonstration workflows run entirely on
-your local machine using Docker Compose or a local `kind` Kubernetes
-cluster — no paid cloud resources or paid API keys are required. Local
-LLM inference is provided by Ollama. AWS is documented as an optional
-deployment target for later phases, but no AWS resources are
-provisioned by this project by default.
+Every tool above is free/open-source; no paid cloud resource has ever been provisioned for this
+project (see `infrastructure/terraform/README.md`).
 
-## Development roadmap
-
-See [`docs/roadmap.md`](docs/roadmap.md) for the full, phased roadmap
-with acceptance criteria. In summary:
-
-1. Foundation — repository, architecture, standards. *(complete)*
-2. Local data and event-streaming infrastructure — Compose stack for
-   PostgreSQL/pgvector, Redis, Redpanda, and MinIO. *(complete)*
-3. **Incident-management service** — Java/Spring Boot
-   control-plane API, transactional outbox, idempotent anomaly
-   consumption. Hardened for reliability and, most recently, secured
-   with Keycloak-backed authentication/authorization/audit logging —
-   see [`docs/roadmap.md`](docs/roadmap.md) for the full list of
-   cross-cutting phases applied to this service since.
-4. Detection engine and SLO evaluation.
-5. Investigation agent, retrieval, and root-cause analysis.
-6. Human-approval workflow and remediation recommendations.
-7. Operator dashboard and auditable reporting.
-8. Kubernetes/Helm packaging and optional AWS deployment mapping.
-
-## Architecture documentation
-
-- [System overview](docs/architecture/system-overview.md)
-- [Architecture Decision Records](docs/decisions/)
-- [Local platform reference](docs/development/local-platform.md)
-- [Authentication, authorization, and audit logging](docs/development/security.md)
-- [Performance testing and reproducible benchmarks](docs/development/performance.md)
-- [Production readiness, CI/CD, backup, and release recovery](docs/development/operations.md)
-- [AI-assisted incident triage](docs/development/ai-triage.md)
-- [Alert ingestion, correlation, routing, and notifications](docs/development/alert-ingestion.md)
-- [Secure MCP server and approval-gated agent operations](docs/development/mcp-server.md)
-- [Operator console](frontend/README.md)
-- [Incident-service README](services/incident-service/README.md)
-- [Incident-service API reference](docs/api/incident-service.md)
-- [Event contracts](docs/events/event-envelope.md)
-
-## Local platform (Phase 2)
-
-Phase 2 adds a free, local data and event-streaming platform, running
-entirely through Docker Compose: PostgreSQL with pgvector, Redis,
-Redpanda (Kafka-compatible), an optional Redpanda Console, and MinIO.
-**This runs entirely on your machine — no AWS or other cloud charges
-are ever incurred by anything in this repository.**
-
-### Prerequisites
-
-- Docker Desktop (or an equivalent Docker Engine + Compose v2 install)
-- `bash` (present by default on macOS)
-
-Run `make doctor` to check these and the rest of the project's
-prerequisites without installing or modifying anything.
-
-### Local environment setup
+## Local quick start
 
 ```bash
-cp .env.example .env
-# edit .env and replace every "change-me-local-dev-only" placeholder
+git clone https://github.com/ashah5123/SentinelOps.git && cd SentinelOps
+cp .env.example .env   # replace every "change-me-local-dev-only" placeholder
+make infra-up          # core platform: Postgres, Redis, Redpanda, MinIO, Keycloak
+make incident-up       # incident-service (app profile)
+make correlation-up    # telemetry-correlation-service
 ```
 
-`.env` is git-ignored and must never be committed.
+See `docs/development/local-platform.md` for prerequisites, port configuration, health
+verification, and troubleshooting.
 
-### Starting and stopping the platform
+## Demo
 
 ```bash
-make infra-config   # validate the Compose configuration
-make infra-up       # start core services, wait for healthy, init topics/buckets
-make infra-status   # show service status/health
-make infra-smoke    # run the full smoke test
-make infra-down     # stop containers, keep persistent volumes
+make demo           # start the full platform + walk through the complete workflow
+make demo-cleanup   # stop everything and remove volumes
 ```
 
-### Service endpoints (all bound to `127.0.0.1` only)
+Deterministic seed data — no external production system required. Five-minute technical
+walkthrough script: `docs/development/demo.md`.
 
-| Service | Default local endpoint |
-|---|---|
-| PostgreSQL | `127.0.0.1:5432` |
-| Redis | `127.0.0.1:6379` |
-| Redpanda (Kafka API) | `127.0.0.1:19092` |
-| Redpanda Admin API | `127.0.0.1:9644` |
-| Redpanda Console (optional) | http://127.0.0.1:8080 |
-| MinIO API | http://127.0.0.1:9000 |
-| MinIO Console | http://127.0.0.1:9001 |
+## Screenshots
 
-Ports are configurable via `.env` — see
-[`docs/development/local-platform.md`](docs/development/local-platform.md).
+**None are included.** This repository's own verification discipline (see "Benchmark
+methodology" below) does not permit publishing a screenshot that wasn't actually captured from a
+running instance, and no live browser session was available in the environment this phase was
+authored in to capture one. Run `make demo` and `cd frontend && npm run dev` to see the console
+live — `docs/development/demo.md` describes exactly what you'll see at each step.
 
-### Health verification
+## Security model
 
-`make infra-up` waits for every core service's Docker health check to
-pass before returning. `make infra-smoke` additionally verifies
-pgvector, required schemas/topics/buckets, authentication, and that no
-service is exposed beyond localhost. See
-[`docs/development/local-platform.md`](docs/development/local-platform.md)
-for what each check does.
+Keycloak OIDC bearer tokens on every authenticated endpoint; role-based access control
+(VIEWER/RESPONDER/ADMIN) enforced per-endpoint; HMAC-signed generic webhooks with replay
+protection; self-approval and approval-replay rejected server-side for both agent proposals and
+remediation executions; deny-by-default remediation policy engine; immutable audit trail. Full
+detail: `docs/development/security.md`, `docs/architecture/threat-model.md`. CI security
+tooling: `docs/validation/security-validation.md`.
 
-### Troubleshooting
+## Observability model
 
-See the "Common macOS issues" section of
-[`docs/development/local-platform.md`](docs/development/local-platform.md)
-for Docker availability, port conflicts, and Apple Silicon notes.
+Every service exports Prometheus metrics, OpenTelemetry traces (correlated across the alert →
+incident → proposal → remediation chain), and structured logs shipped to Loki. Seven SLOs with
+error-budget/burn-rate tracking are computed by `incident-service` itself and surfaced in the
+console's Platform Health page. See `docs/architecture/diagrams.md`'s observability-pipeline
+diagram and `docs/validation/slo.md`.
 
-### ⚠️ Data-reset warning
+## Testing strategy
 
-`make infra-clean` **permanently deletes** all local platform data
-(PostgreSQL, Redis, Redpanda, and MinIO volumes) after an interactive
-`yes` confirmation. `make infra-down` does **not** delete data — use it
-for routine stop/start cycles.
+Unit and integration tests (JUnit/Mockito, Testcontainers for Docker-dependent cases), a
+deterministic AI-evaluation harness (retrieval recall/precision, structured-output validity,
+prompt-injection resistance), Playwright end-to-end scenarios, an 11-experiment chaos framework
+with enforced safety guarantees, k6 load-testing scenarios with declared regression thresholds,
+and a disaster-recovery exercise measuring real RTO/RPO. See `docs/validation/README.md` for the
+single command that runs the reproducible subset of this suite locally.
 
-## Incident service (Phase 3)
+## Deployment options
 
-Phase 3 adds `services/incident-service`, a Java 21 / Spring Boot
-control-plane API for creating and managing incidents, backed by
-PostgreSQL (via Flyway migrations) and a transactional outbox that
-publishes versioned events to Redpanda. **It implements no
-authentication yet — see the security notice in its own README before
-running it anywhere but locally.**
+| | Where |
+| --- | --- |
+| Local (Docker Compose) | `docs/development/local-platform.md` |
+| Kubernetes + Helm (any cluster) | `infrastructure/helm/sentinelops/` |
+| AWS (Terraform, dev/production examples) | `infrastructure/terraform/` |
+| GitOps (Argo CD) | `docs/development/production-deployment.md` |
 
-```bash
-make incident-build   # compile, format-check, test, package
-make incident-image   # build the Docker image
-make incident-up      # start infra + the incident service
-make incident-logs
-make incident-down
+## Benchmark methodology and verified results
+
+**Every published number is traceable to a reproducible command and an actual result — nothing
+here is estimated or rounded up.** See `docs/portfolio-evidence.md` for the full evidence
+(environment, exact commands, actual measured results, explicitly labeled limitations) built
+from `docs/validation/latest-results.md`, the record of the last successful local validation
+run. No production load, deduplication-rate, or availability claim is made because none has been
+measured against a live deployment — see that document's "Limitations affecting interpretation"
+section.
+
+## AI without external credentials
+
+The platform runs completely without any LLM API key or network access: set
+`sentinelops.ai.provider=deterministic` (the CI/test default) for a rule-based, citation-honest
+provider, or `sentinelops.ai.provider=ollama` to use a local model with no data leaving the
+machine. If AI is disabled or fails entirely, incident creation, correlation, and remediation are
+unaffected — triage is additive, never load-bearing (verified by
+`ChaosInjectingAiProviderTest`). See `docs/development/ai-triage.md`.
+
+## Known limitations
+
+- No live load test, chaos experiment, or disaster-recovery drill has been executed against a
+  real deployment in the environment that authored this code (no Docker/cluster available there)
+  — CI runs all of these live on every push; see `docs/validation/` for exactly what each check
+  covers and what remains environment-dependent.
+- Terraform modules were written and reviewed but never `apply`'d against a real AWS account.
+- No screenshots exist yet (see "Screenshots" above).
+- Redis and MinIO are provisioned in every environment but not yet read/written by any
+  application code path (see `docs/development/local-platform.md`) — infrastructure ahead of the
+  feature that will use it, documented rather than hidden.
+- Single-tenant only; no per-tenant resource-scope isolation exists or is tested.
+
+## Future improvements
+
+- Wire a Redis-backed cache into a real read path and measure its effect.
+- Add object-storage-backed postmortem/artifact generation using the already-provisioned MinIO
+  buckets.
+- Expose remediation-runbook proposals as an MCP tool (currently MCP proposes incident-level
+  actions only — see `docs/development/mcp-server.md`'s known limitations).
+- Run a real load-test baseline against a staging deployment and replace this README's
+  "no production numbers exist" caveat with actual measured capacity.
+
+## Repository structure
+
+```
+services/incident-service/              Spring Boot application (REST API, MCP server, remediation engine)
+services/telemetry-correlation-service/ Spring Boot application (deployment/dependency correlation)
+frontend/                               React operator console
+infrastructure/docker/                  Local Compose stack, k6 scenarios, chaos/DR/demo scripts
+infrastructure/helm/sentinelops/        Kubernetes Helm chart
+infrastructure/terraform/               AWS infrastructure modules + dev/production examples
+docs/                                   Architecture, API/event contracts, ADRs, operations, validation
+.github/workflows/                      CI (push/PR) and release (tag-triggered) pipelines
 ```
 
-Full details, API reference, event contracts, and known limitations:
-[`services/incident-service/README.md`](services/incident-service/README.md).
+## License and contributions
 
-## Observability stack (Phase 4)
-
-Phase 4 adds a local OpenTelemetry Collector, Prometheus, Grafana,
-Loki, Tempo, and Alertmanager, wired into the incident service's
-metrics, distributed traces, and structured logs. It runs as its own
-opt-in Compose profile, independent of `app`:
-
-```bash
-make observability-up      # start otel-collector, prometheus, loki, tempo, alertmanager, grafana
-make observability-status
-make observability-smoke   # end-to-end check: metrics/logs/traces flow and alert rules load
-make observability-down    # stop, keeping all persistent volumes
-```
-
-Grafana (http://127.0.0.1:3001) ships with two provisioned dashboards
-("SentinelOps Service Overview" and "SentinelOps Incident Processing")
-and datasources wired for trace-to-log correlation. Full endpoint
-list, data-flow diagram, and how to trace a single request across
-Grafana/Tempo/Loki: [`docs/development/observability.md`](docs/development/observability.md).
-Architecture rationale: [ADR 0009](docs/decisions/0009-local-observability-stack-topology.md).
-
-## Telemetry correlation service (Phase 5)
-
-Phase 5 adds `services/telemetry-correlation-service`, a Java 21 / Spring Boot service that
-incrementally ingests Prometheus/Loki/Tempo telemetry, consumes deployment and
-service-dependency events, and deterministically (rule-based, no AI/ML) correlates evidence
-against detected incidents — publishing the result back to the incident service through a
-transactional outbox. **It implements no authentication yet — see the security notice in its
-own README before running it anywhere but locally.**
-
-```bash
-make correlation-build   # compile, format-check, test, package
-make correlation-image   # build the Docker image
-make correlation-up      # start infra + the telemetry-correlation service
-make correlation-logs
-make correlation-down
-make correlation-smoke   # end-to-end ingestion/correlation smoke test
-```
-
-Full details, API reference, event contracts, correlation rules, and known limitations:
-[`services/telemetry-correlation-service/README.md`](services/telemetry-correlation-service/README.md).
-Architecture rationale: [ADR 0010](docs/decisions/0010-incremental-ingestion-and-correlation.md).
-
-## Reliability and failure recovery (Phase 6)
-
-Both Java services' transactional outbox, idempotent Kafka consumption, and retry/dead-letter
-handling were hardened for real failure conditions: the outbox no longer holds a database
-transaction open across the Kafka network call, retries use jittered exponential backoff,
-permanently-invalid events skip straight to the dead-letter topic, and `/actuator/health/readiness`
-now fails when PostgreSQL or the broker is actually unreachable. See
-[`docs/development/reliability.md`](docs/development/reliability.md) for the full guarantees, the
-operational runbook, and how to reproduce failure scenarios locally (`make reliability-test`);
-[ADR 0011](docs/decisions/0011-reliability-and-failure-recovery.md) for the design rationale; and
-[`docs/benchmarks/phase-6-reliability.md`](docs/benchmarks/phase-6-reliability.md) for what has
-actually been measured versus what remains blocked pending Docker availability. This is a
-cross-cutting hardening pass, not new user-facing capability — it does not add SLO evaluation,
-anomaly detection, or any other new phase of the roadmap.
-
-## Authentication, authorization, and audit logging (Phase 7)
-
-The incident service now requires a valid OAuth 2.0 bearer token issued by a local Keycloak
-realm on every request, enforces `VIEWER`/`RESPONDER`/`ADMIN` role-based authorization at the
-endpoint and service layer, and records a reliable, admin-queryable, append-only audit trail
-(including authorization denials). The telemetry-correlation service is unaffected by this
-phase — see its own README's security notice. Full setup, the role-permission matrix, example
-authenticated requests, a threat-model summary, and troubleshooting:
-[`docs/development/security.md`](docs/development/security.md).
-
-## Performance testing and reproducible benchmarks (Phase 8)
-
-A k6-based (via its own Docker image — nothing installed locally) load-testing harness for the
-incident service's real endpoints: deterministic synthetic-data seeding with scoped cleanup,
-scenarios for paginated reads/creation/lifecycle transitions/a mixed workload/a bounded burst,
-and an orchestrator that captures the environment and samples existing outbox/HikariCP/JVM
-metrics per run. **Built and statically validated, but not yet executed against a real running
-stack** — see [`docs/benchmarks/phase-8-performance.md`](docs/benchmarks/phase-8-performance.md)
-for exactly why and what remains to run. Full guide:
-[`docs/development/performance.md`](docs/development/performance.md).
-
-## Operator console (Phase 10)
-
-A focused React + TypeScript + Vite frontend (`frontend/`) — dashboard, incident queue, incident
-detail workflow, and an ADMIN-only recovery view — authenticating via Authorization Code + PKCE
-against the same Keycloak realm the backend uses. Preserves every backend security/authorization
-guarantee (the backend remains authoritative; the UI only hides what a role can't do). See
-[`frontend/README.md`](frontend/README.md) for setup, demo-user roles, and known limitations.
-
-## Project status
-
-**Foundation.** Repository scaffolding, architecture documentation, a
-local data/event-streaming platform (Phase 2), an incident-management
-service (Phase 3), a local observability baseline (Phase 4), a
-telemetry ingestion/correlation service (Phase 5), reliability/
-failure-recovery hardening (Phase 6), authentication/authorization/
-audit logging for the incident service (Phase 7), a benchmark
-harness for the incident service (Phase 8), CI/CD, backup/restore, and
-release-recovery tooling (Phase 9), and a React/TypeScript operator
-console (Phase 10) exist — all built, with everything requiring Docker
-or a browser download not yet executed in this authoring environment.
-No Kubernetes, SLO/anomaly detection, AI/investigation functionality,
-frontend, or remediation execution described above are implemented yet.
+MIT License — see `LICENSE`. This is a single-author portfolio project; see `CONTRIBUTING.md`
+for the (currently minimal) contribution process. Security issues: see `SECURITY.md`.
 
 ## Author
 

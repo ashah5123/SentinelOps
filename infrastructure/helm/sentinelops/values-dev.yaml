@@ -1,0 +1,45 @@
+# Development/laptop-scale overrides — never loosens a security control, only right-sizes
+# replica counts and resource requests for a small (even single-node) cluster.
+global:
+  environment: dev
+  namespace: sentinelops-dev
+
+incidentService:
+  replicaCount: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  autoscaling:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false # a single replica has nothing to keep "available" during disruption
+
+telemetryCorrelationService:
+  replicaCount: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 400m, memory: 512Mi }
+  autoscaling:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+
+topologySpreadConstraints:
+  enabled: false # a single-node dev cluster has no spread to enforce
+
+ingress:
+  host: sentinelops.dev.local
+  tls:
+    enabled: false # a local dev cluster typically has no public cert-manager issuer
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+
+externalDependencies:
+  postgres:
+    host: postgres.sentinelops-dev.svc.cluster.local
+  redis:
+    host: redis.sentinelops-dev.svc.cluster.local
+  kafka:
+    brokers: redpanda.sentinelops-dev.svc.cluster.local:9092
+  keycloak:
+    issuerUri: http://keycloak.sentinelops-dev.svc.cluster.local:8080/realms/sentinelops

@@ -321,3 +321,39 @@ alert-demo: ## Drive the Alertmanager and generic-webhook connectors through a f
 mcp-diagnostic: ## Run the local MCP diagnostic client (stdio transport)
 	@python3 infrastructure/docker/scripts/mcp-diagnostic-client.py \
 		services/incident-service/target/incident-service.jar $${INCIDENT_ID:-}
+
+## ---- Phase 14: policy-controlled remediation demo ----
+
+remediation-demo: ## Drive the propose->approve->execute->rollback remediation flow end to end
+	@bash infrastructure/docker/scripts/remediation-demo.sh $${INCIDENT_SERVICE_URL:-http://localhost:8081}
+
+## ---- Phase 15: chaos engineering and production validation ----
+##
+## CHAOS_EXPERIMENTS_ENABLED=true must be set (see .env) before chaos-experiment runs anything
+## beyond --dry-run. See docs/validation/chaos-engineering.md.
+
+chaos-list: ## List every chaos experiment in the catalog
+	@bash infrastructure/docker/scripts/chaos-experiment.sh list
+
+chaos-run: ## Run one chaos experiment (EXPERIMENT= required, e.g. EXPERIMENT=kafka-broker-fault)
+	@bash infrastructure/docker/scripts/chaos-experiment.sh $${EXPERIMENT:?set EXPERIMENT=<id>, see 'make chaos-list'}
+
+dr-exercise: ## Run the disaster-recovery exercise (measures real RTO/RPO from a backup/restore drill)
+	@bash infrastructure/docker/scripts/dr-exercise.sh
+
+minio-dr-verify: ## Verify MinIO object-storage backup/restore round-trips correctly
+	@bash infrastructure/docker/scripts/minio-backup-restore-verify.sh
+
+validate-all: ## Run the complete reproducible validation pipeline (see docs/validation/README.md)
+	@bash infrastructure/docker/scripts/run-validation.sh
+
+## ---- Phase 16: portfolio demonstration ----
+##
+## A single command to start the full demo (deterministic seed data, no external systems
+## required) and a single command to clean it up safely. See docs/development/demo.md.
+
+demo: ## Start the full SentinelOps demonstration (see docs/development/demo.md)
+	@bash infrastructure/docker/scripts/full-demo.sh
+
+demo-cleanup: ## Safely tear down the demo environment (containers + volumes, never the source tree)
+	@bash infrastructure/docker/scripts/full-demo-cleanup.sh

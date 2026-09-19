@@ -2,10 +2,10 @@
 
 ## Project status
 
-SentinelOps is currently in the **Foundation** phase. No deployable
-services exist yet, so there is no running attack surface to report
-against at this time. This policy is published in advance so that a
-clear process exists once application code ships.
+SentinelOps has reached v1.0 and has a real, running attack surface: an authenticated REST API,
+a Model Context Protocol server, webhook ingestion endpoints, and a policy-controlled
+remediation engine. See `docs/architecture/threat-model.md` for the full threat model and
+`docs/validation/security-validation.md` for current CI security tooling and accepted risks.
 
 ## Reporting a vulnerability
 
@@ -20,24 +20,26 @@ If you believe you have found a security vulnerability in SentinelOps:
 
 ## Response expectations
 
-As a foundation-stage project, response times are best-effort. Once
-SentinelOps has deployed services and active users, this section will
-be updated with concrete response-time commitments.
+This is a single-author portfolio project (see `LICENSE`); response times are best-effort, not a
+commercial SLA.
 
 ## Scope
 
-Security principles that apply as the project matures:
+Security principles this project actually implements today:
 
-- No operational or remediation action is ever taken automatically —
-  all actions that affect real systems require explicit human
-  authorization.
-- Secrets and credentials are never committed to the repository; local
-  development uses `.env` files derived from `.env.example` and are
-  excluded from version control.
-- Authentication and authorization use industry-standard protocols
-  (OAuth 2.0, OIDC, JWT) via Keycloak, with role-based access control.
-- Dependency and container scanning (e.g. Trivy, CodeQL) will be part
-  of the CI pipeline once services exist.
+- No operational or remediation action is ever taken automatically without a policy-evaluated,
+  human-approved gate — see `docs/development/remediation.md` (policy-controlled remediation
+  engine) and `docs/development/mcp-server.md` (propose-then-approve for every MCP-driven
+  mutation).
+- Secrets and credentials are never committed to the repository; local development uses `.env`
+  files derived from `.env.example` and are excluded from version control; production secrets
+  are injected via Kubernetes Secrets / an external-secrets operator, never templated into the
+  Helm chart (see `infrastructure/helm/sentinelops/templates/NOTES.txt`).
+- Authentication and authorization use OAuth 2.0/OIDC/JWT via Keycloak, with role-based access
+  control enforced per endpoint (`RolePermissionMatrixTest`).
+- Dependency and container scanning (Trivy, CodeQL, gitleaks, OWASP ZAP) run in CI on every push
+  — see `.github/workflows/ci.yml` and `docs/validation/security-validation.md` for the exact
+  jobs, severity policy, and documented accepted risks.
 
 ## Disclosure
 

@@ -13,7 +13,7 @@
 
   <groupId>com.sentinelops</groupId>
   <artifactId>incident-service</artifactId>
-  <version>0.1.0</version>
+  <version>1.0.0</version>
   <name>incident-service</name>
   <description>SentinelOps incident-management control-plane service</description>
   <packaging>jar</packaging>

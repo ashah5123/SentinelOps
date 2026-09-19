@@ -1,0 +1,18 @@
+SentinelOps ({{ .Values.global.environment }}) deployed to namespace {{ .Values.global.namespace }}.
+
+This chart never creates or contains a Kubernetes Secret — every {{ range .Values.incidentService.secretRefs }}{{ . }} {{ end }}must
+already exist in {{ .Values.global.namespace }} before these pods will start (they envFrom
+these secrets; a missing one blocks the pod at CreateContainerConfigError, never a silent
+fallback to an insecure default). Create them via your CI/CD pipeline, an external-secrets
+operator, or:
+
+  kubectl create secret generic sentinelops-database-credentials \
+    --namespace {{ .Values.global.namespace }} \
+    --from-literal=POSTGRES_APP_PASSWORD=<value> \
+    --from-literal=POSTGRES_APP_USER=<value>
+
+See docs/development/production-deployment.md for the full secret list per component.
+
+Check rollout status:
+  kubectl -n {{ .Values.global.namespace }} rollout status deployment/incident-service
+  kubectl -n {{ .Values.global.namespace }} rollout status deployment/telemetry-correlation-service

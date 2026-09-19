@@ -1,0 +1,22 @@
+apiVersion: v2
+name: sentinelops
+description: >
+  SentinelOps incident-detection and investigation platform — Helm chart for the application
+  tier (incident-service, telemetry-correlation-service). Backing stateful services
+  (PostgreSQL, Redis, Kafka-compatible streaming, object storage, Keycloak, the observability
+  stack) are deployed separately — as managed AWS services provisioned by
+  infrastructure/terraform/ in production, or via infrastructure/docker/docker-compose.yml
+  locally — never bundled as chart dependencies here, so this chart stays a thin, reviewable
+  deployment of the two Java services this repository actually builds.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/ashah5123/SentinelOps
+sources:
+  - https://github.com/ashah5123/SentinelOps
+keywords:
+  - incident-management
+  - observability
+  - sre
+maintainers:
+  - name: Aarav Shah

@@ -1,13 +1,16 @@
 # Contributing to SentinelOps
 
-Thank you for your interest in SentinelOps. This document describes the
-conventions used while the project is in its foundation phase.
+Thank you for your interest in SentinelOps. This document describes the conventions used across
+the project.
 
 ## Project status
 
-SentinelOps is currently in the **Foundation** phase. No application
-services exist yet. Contributions at this stage are limited to
-architecture, documentation, tooling, and repository standards.
+SentinelOps has reached v1.0: incident ingestion/correlation, AI-assisted triage, a secure MCP
+agent interface, a policy-controlled remediation engine, chaos/SLO/disaster-recovery validation,
+and a Kubernetes/Terraform production deployment path are all implemented and tested — see the
+root `README.md` for the full capability list and `docs/roadmap.md` for what came before this
+point. This remains a single-author portfolio project (see `LICENSE`); contributions are welcome
+but reviewed against the same standards documented below.
 
 ## Ground rules
 
@@ -34,29 +37,27 @@ Run `make doctor` to check whether your machine has the required
 prerequisites installed. `make doctor` never installs or modifies
 anything; it only reports.
 
-## Code standards (for future phases)
+## Code standards
 
-These will apply once application code is introduced:
-
-- **Java**: Java 21, Spring Boot conventions, formatted per the project
-  style, unit-tested with JUnit and Testcontainers for integration tests.
-- **Python**: type-hinted, formatted and linted with standard tooling,
-  tested with pytest.
-- **TypeScript/Next.js**: strict TypeScript, tested with Playwright for
-  end-to-end flows.
-- **Infrastructure**: Terraform and Helm changes must be reviewable as
-  plain diffs; no manually-applied infrastructure changes.
-- All service boundaries that trigger real-world or operational actions
-  must require explicit human authorization — this is a non-negotiable
-  design principle, not an optional feature.
+- **Java**: Java 21, Spring Boot conventions, formatted with Spotless, checked with SpotBugs,
+  unit-tested with JUnit/Mockito and Testcontainers for Docker-dependent integration tests.
+- **TypeScript/React**: strict TypeScript, ESLint + Prettier, Vitest for unit/component tests,
+  Playwright for end-to-end flows.
+- **Infrastructure**: Helm changes must pass `helm lint`; Terraform changes must pass
+  `terraform fmt -check` and `terraform validate` (see `infrastructure/terraform/README.md`) —
+  no manually-applied infrastructure change; every change goes through `terraform plan` review.
+- All service boundaries that trigger real-world or operational actions require explicit human
+  authorization — the two-stage propose→approve→execute pattern used by both the MCP agent
+  interface (`docs/development/mcp-server.md`) and the remediation engine
+  (`docs/development/remediation.md`) is this principle in practice, not an optional feature.
 
 ## Pull requests
 
 - Describe the problem being solved and the approach taken.
-- Reference any relevant Architecture Decision Record (ADR) under
-  `docs/decisions/`.
-- Include tests for behavioral changes once the codebase contains
-  testable services.
+- Reference any relevant Architecture Decision Record (ADR) under `docs/decisions/`.
+- Include tests for behavioral changes — run the checks documented in
+  `docs/validation/README.md` before opening a PR; CI (`.github/workflows/ci.yml`) runs the full
+  suite automatically.
 
 ## Reporting issues
 

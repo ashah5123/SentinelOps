@@ -1,0 +1,127 @@
+{{- $root := . -}}
+{{- range $component, $svc := dict "incident-service" $root.Values.incidentService "telemetry-correlation-service" $root.Values.telemetryCorrelationService }}
+{{- if $svc.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $component }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: {{ $svc.replicaCount }}
+  # maxUnavailable: 0 makes every rolling update purely additive — a new pod must be Ready
+  # before any old pod is removed, so a bad rollout never drops below the configured replica
+  # count. See docs/development/upgrade-and-rollback.md.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "sentinelops.selectorLabels" (dict "component" $component "Release" $root.Release "Chart" $root.Chart) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sentinelops.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+      {{- with $root.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "sentinelops.serviceAccountName" $root }}
+      automountServiceAccountToken: {{ $root.Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml $root.Values.securityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ $svc.terminationGracePeriodSeconds }}
+      {{- if $root.Values.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ $root.Values.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ $root.Values.topologySpreadConstraints.topologyKey }}
+          whenUnsatisfiable: {{ $root.Values.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "sentinelops.selectorLabels" (dict "component" $component "Release" $root.Release "Chart" $root.Chart) | nindent 14 }}
+      {{- end }}
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: "{{ $root.Values.global.imageRegistry }}{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.containerPort }}
+              protocol: TCP
+          env:
+            - name: SERVER_PORT
+              value: {{ $svc.containerPort | quote }}
+            - name: POSTGRES_HOST
+              value: {{ $root.Values.externalDependencies.postgres.host | quote }}
+            - name: POSTGRES_DB
+              value: {{ $root.Values.externalDependencies.postgres.database | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ $root.Values.externalDependencies.kafka.brokers | quote }}
+            - name: OAUTH2_ISSUER_URI
+              value: {{ $root.Values.externalDependencies.keycloak.issuerUri | quote }}
+            - name: OAUTH2_JWK_SET_URI
+              value: "{{ $root.Values.externalDependencies.keycloak.issuerUri }}/protocol/openid-connect/certs"
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $svc.secretRefs }}
+          envFrom:
+            {{- range . }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: {{ $svc.probes.startup.path }}
+              port: http
+            initialDelaySeconds: {{ $svc.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ $svc.probes.startup.periodSeconds }}
+            failureThreshold: {{ $svc.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.probes.liveness.path }}
+              port: http
+            periodSeconds: {{ $svc.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $svc.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $svc.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.probes.readiness.path }}
+              port: http
+            periodSeconds: {{ $svc.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $svc.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $svc.probes.readiness.failureThreshold }}
+          lifecycle:
+            preStop:
+              # Gives the readiness probe time to start failing and the load balancer time to
+              # stop routing new traffic here before SIGTERM is sent, avoiding dropped requests
+              # during a normal rolling update or node drain.
+              exec:
+                command: ["sleep", "5"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # readOnlyRootFilesystem needs a writable /tmp for the JVM (temp files, JIT-compiled
+        # class caches under some profilers) — this emptyDir is the one deliberate exception,
+        # never a path the application persists real data to.
+        - name: tmp
+          emptyDir: {}
+{{- end }}
+{{- end }}

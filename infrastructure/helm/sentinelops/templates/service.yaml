@@ -1,0 +1,23 @@
+{{- $root := . -}}
+{{- range $component, $svc := dict "incident-service" $root.Values.incidentService "telemetry-correlation-service" $root.Values.telemetryCorrelationService }}
+{{- if $svc.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $component }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "sentinelops.selectorLabels" (dict "component" $component "Release" $root.Release "Chart" $root.Chart) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.containerPort }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- end }}

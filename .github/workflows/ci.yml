@@ -635,3 +635,104 @@ jobs:
         run: |
           docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
             --profile app down --volumes
+
+  # Phase 16: lints and renders the Helm chart against every environment overlay, then validates
+  # the rendered manifests against the real Kubernetes OpenAPI schema for the pinned
+  # kubectl-tools version below (GitHub-hosted runners have no live cluster either, but
+  # kubeconform ships its own bundled schema, so this check needs no cluster — unlike this
+  # phase's local development sandbox, which had neither a cluster nor kubeconform installed).
+  helm-validate:
+    name: Helm lint and manifest validation (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        environment: [dev, staging, production]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: helm lint
+        run: helm lint infrastructure/helm/sentinelops -f infrastructure/helm/sentinelops/values-${{ matrix.environment }}.yaml
+      - name: helm template
+        run: |
+          helm template sentinelops infrastructure/helm/sentinelops \
+            -f infrastructure/helm/sentinelops/values-${{ matrix.environment }}.yaml \
+            > /tmp/rendered-${{ matrix.environment }}.yaml
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+      - name: Validate rendered manifests against the Kubernetes schema
+        run: |
+          kubeconform -strict -summary -kubernetes-version 1.31.0 /tmp/rendered-${{ matrix.environment }}.yaml
+
+  # Phase 16: Terraform formatting, validation, and static security analysis. Runs `terraform
+  # init -backend=false` (no real state, no credentials needed) against each example
+  # environment, and checkov against every module — this is CI's independent confirmation of
+  # what could only be hand-reviewed (not tool-verified) in the sandbox this code was authored
+  # in, which had neither `terraform` nor `checkov` installed.
+  terraform-validate:
+    name: Terraform validate (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        environment: [dev, production]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: terraform fmt -check
+        run: terraform fmt -recursive -check infrastructure/terraform
+      - name: terraform init (no backend, no credentials)
+        working-directory: infrastructure/terraform/environments/${{ matrix.environment }}
+        run: terraform init -backend=false
+      - name: terraform validate
+        working-directory: infrastructure/terraform/environments/${{ matrix.environment }}
+        run: terraform validate
+      - name: Static security analysis (checkov)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infrastructure/terraform
+          framework: terraform
+          soft_fail: true # informational for now — see docs/validation/security-validation.md's accepted-risk notes before hardening to a blocking gate
+
+  # Phase 16: enforces the per-scenario k6 thresholds already declared in every scenario file's
+  # own `options.thresholds` (see docs/validation/load-testing.md) as an explicit, separately
+  # reported gate — a scenario run here that violates its own declared threshold fails this job,
+  # distinct from benchmark-smoke/benchmark-extended's informational sampling.
+  performance-regression-gate:
+    name: Performance regression gate (k6 smoke thresholds)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare .env
+        run: cp .env.example .env
+      - name: Start the app profile
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up -d --wait postgres redis redpanda minio
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            up --exit-code-from redpanda-topics-init redpanda-topics-init
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app up -d --wait keycloak incident-service
+      - name: Run the k6 smoke scenario (fails the job if its own thresholds are violated)
+        run: bash infrastructure/docker/scripts/benchmark-run.sh smoke
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env -f infrastructure/docker/docker-compose.yml \
+            --profile app down --volumes

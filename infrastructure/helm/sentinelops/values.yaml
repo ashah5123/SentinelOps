@@ -1,0 +1,185 @@
+# Default values for the sentinelops chart. Secure-by-default: every hardening control the
+# chart supports (autoscaling, pod disruption budgets, network policy, non-root/read-only-fs
+# security contexts) is ON by default — an environment-specific values file only ever loosens
+# what is safe to loosen (e.g. replica counts for a laptop-scale dev cluster), never a security
+# control. See infrastructure/helm/sentinelops/values-{dev,staging,production}.yaml.
+
+global:
+  namespace: sentinelops
+  environment: production
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# ---------------------------------------------------------------------------------------------
+# incident-service
+# ---------------------------------------------------------------------------------------------
+incidentService:
+  enabled: true
+  image:
+    repository: sentinelops/incident-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 3
+  containerPort: 8081
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  probes:
+    startup:
+      path: /actuator/health/liveness
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      failureThreshold: 24 # up to 120s to start before liveness takes over
+    liveness:
+      path: /actuator/health/liveness
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      path: /actuator/health/readiness
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+  terminationGracePeriodSeconds: 45
+  extraEnv: []
+  # Names of pre-existing Kubernetes Secrets (created by CI/CD, an external-secrets operator, or
+  # `kubectl create secret` — never committed to this repository) whose keys are injected as
+  # environment variables via envFrom.
+  secretRefs:
+    - sentinelops-database-credentials
+    - sentinelops-security-credentials
+    - sentinelops-alerts-credentials
+
+# ---------------------------------------------------------------------------------------------
+# telemetry-correlation-service
+# ---------------------------------------------------------------------------------------------
+telemetryCorrelationService:
+  enabled: true
+  image:
+    repository: sentinelops/telemetry-correlation-service
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  containerPort: 8082
+  resources:
+    requests:
+      cpu: 200m
+      memory: 384Mi
+    limits:
+      cpu: 750m
+      memory: 768Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  probes:
+    startup:
+      path: /actuator/health/liveness
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      failureThreshold: 24
+    liveness:
+      path: /actuator/health/liveness
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      path: /actuator/health/readiness
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+  terminationGracePeriodSeconds: 30
+  extraEnv: []
+  secretRefs:
+    - sentinelops-database-credentials
+
+# ---------------------------------------------------------------------------------------------
+# Shared security posture — applied to every workload this chart creates.
+# ---------------------------------------------------------------------------------------------
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# Pods land on separate nodes where the cluster has enough capacity, and are never all
+# scheduled onto the same availability zone as a hard requirement (soft preference — a small
+# dev cluster with one node must still be schedulable).
+topologySpreadConstraints:
+  enabled: true
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  # Example for AWS IRSA in production (see infrastructure/terraform/modules/iam):
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/sentinelops-app
+
+networkPolicy:
+  enabled: true
+  # Deny-by-default (see templates/networkpolicy.yaml): only DNS egress and the explicit
+  # dependency ports below are allowed outbound; only ingress-controller and same-namespace
+  # traffic is allowed inbound.
+  allowedEgressPorts:
+    - 5432 # PostgreSQL
+    - 6379 # Redis
+    - 9092 # Kafka-compatible broker
+    - 443 # HTTPS (Keycloak issuer, any external API)
+    - 53 # DNS
+
+ingress:
+  enabled: true
+  className: nginx
+  host: sentinelops.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls:
+    enabled: true
+    secretName: sentinelops-tls
+
+# Backing services this chart never provisions itself — connection details only. See
+# infrastructure/terraform/ (production) or infrastructure/docker/docker-compose.yml (local).
+externalDependencies:
+  postgres:
+    host: postgres.sentinelops-data.svc.cluster.local
+    port: 5432
+    database: sentinelops
+  redis:
+    host: redis.sentinelops-data.svc.cluster.local
+    port: 6379
+  kafka:
+    brokers: redpanda.sentinelops-data.svc.cluster.local:9092
+  keycloak:
+    issuerUri: https://auth.sentinelops.example.com/realms/sentinelops
+
+podAnnotations: {}
+commonLabels: {}

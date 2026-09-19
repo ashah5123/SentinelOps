@@ -1,0 +1,82 @@
+{{- if .Values.networkPolicy.enabled }}
+---
+# Deny-by-default: an empty podSelector with both policyTypes matches every pod in the
+# namespace and, absent any other rule, blocks all ingress and egress. Every other
+# NetworkPolicy in this file only ever ADDS a narrow allow on top of this baseline.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-dependencies-egress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sentinelops.name" . }}
+  policyTypes: ["Egress"]
+  egress:
+    - to: []
+      ports:
+        {{- range .Values.networkPolicy.allowedEgressPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller-and-same-namespace
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "sentinelops.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sentinelops.name" . }}
+  policyTypes: ["Ingress"]
+  ingress:
+    # From any pod in the same namespace (service-to-service calls between the two components)...
+    - from:
+        - podSelector: {}
+    # ...and from the ingress controller's namespace (adjust the label to match the cluster's
+    # actual ingress-nginx/other controller namespace label before deploying).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+{{- end }}

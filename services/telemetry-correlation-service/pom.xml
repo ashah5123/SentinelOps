@@ -13,7 +13,7 @@
 
   <groupId>com.sentinelops</groupId>
   <artifactId>telemetry-correlation-service</artifactId>
-  <version>0.1.0</version>
+  <version>1.0.0</version>
   <name>telemetry-correlation-service</name>
   <description>SentinelOps telemetry ingestion and correlation service</description>
   <packaging>jar</packaging>

@@ -1,0 +1,116 @@
+name: Release
+
+# Runs only when a semantic-version tag (v1.0.0, v1.0.1, ...) is pushed — a normal push to main
+# never triggers this workflow, only ci.yml does. This is deliberate: a release is a distinct,
+# reviewed action (see docs/development/upgrade-and-rollback.md), never an automatic side effect
+# of merging code.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push-images:
+    name: Build, sign, and publish (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # required for cosign keyless signing and SLSA provenance attestation
+      attestations: write
+    strategy:
+      matrix:
+        service: [incident-service, telemetry-correlation-service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive the version from the pushed tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sentinelops-${{ matrix.service }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/sentinelops-${{ matrix.service }}:latest
+
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0.17.7
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/sentinelops-${{ matrix.service }}:${{ steps.version.outputs.version }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.service }}.cyclonedx.json
+
+      - name: Sign the image (cosign, keyless via GitHub OIDC — no private key stored as a secret)
+        uses: sigstore/cosign-installer@v3
+      - run: |
+          cosign sign --yes "ghcr.io/${{ github.repository_owner }}/sentinelops-${{ matrix.service }}@${{ steps.build.outputs.digest }}"
+
+      - name: Attest SLSA build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/sentinelops-${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cyclonedx.json
+          retention-days: 90
+
+  package-helm-chart:
+    name: Package the Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: helm package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          helm package infrastructure/helm/sentinelops --version "$VERSION" --app-version "$VERSION" --destination /tmp/helm-package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: /tmp/helm-package/*.tgz
+          retention-days: 90
+
+  github-release:
+    name: Create the GitHub release
+    needs: [build-and-push-images, package-helm-chart]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/release-artifacts
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            /tmp/release-artifacts/**/*.tgz
+            /tmp/release-artifacts/**/*.cyclonedx.json
