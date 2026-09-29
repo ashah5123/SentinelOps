@@ -27,6 +27,7 @@ built deliberately, tested, and deployable, rather than assumed away.
 | Role-based auth (Keycloak OIDC), audit logging | `docs/development/security.md` |
 | AI-assisted triage with cited, retrieval-grounded evidence and graceful fallback | `docs/development/ai-triage.md` |
 | Operator console (React) | `frontend/README.md` |
+| Incident evidence attachments with private MinIO/S3 storage and SHA-256 integrity metadata | `docs/development/incident-attachments.md` |
 | Secure MCP server: read-only tools, propose-then-approve for every mutation | `docs/development/mcp-server.md` |
 | Policy-controlled remediation: versioned runbooks, deny-by-default policy engine, two-person approval, automatic rollback | `docs/development/remediation.md` |
 | Chaos-engineering framework (11 experiments), SLO/error-budget engine, disaster-recovery exercises | `docs/validation/` |

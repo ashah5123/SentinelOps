@@ -7,6 +7,9 @@ import {
   getIncidentAuditEvents,
   getIncidentTimeline,
   transitionIncident,
+  listAttachments,
+  uploadAttachment,
+  downloadAttachment,
 } from "../api/incidents";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { AsyncBoundary } from "../components/AsyncBoundary";
@@ -47,6 +50,11 @@ export function IncidentDetail() {
       canReadAudit ? getIncidentAuditEvents(client, id!, signal) : Promise.resolve(null),
     [client, id, canReadAudit],
   );
+  const attachmentsState = useAsyncData(
+    (signal) => listAttachments(client, id!, signal),
+    [client, id],
+  );
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   async function submitTransition(status: IncidentStatus) {
     if (submitting) return; // prevent duplicate submissions while pending
@@ -267,6 +275,69 @@ export function IncidentDetail() {
               canRequest={canWrite}
               onIncidentChanged={incidentState.refetch}
             />
+
+            <section aria-labelledby="attachments-heading">
+              <h2 id="attachments-heading">Evidence attachments</h2>
+              {canWrite && (
+                <div className="assignment-form">
+                  <label htmlFor="attachment-file">Attach investigation evidence</label>
+                  <input
+                    id="attachment-file"
+                    type="file"
+                    onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    disabled={!attachmentFile || submitting}
+                    onClick={async () => {
+                      if (!attachmentFile) return;
+                      setSubmitting(true);
+                      setActionError(null);
+                      try {
+                        await uploadAttachment(client, id!, attachmentFile);
+                        announce(`${attachmentFile.name} uploaded.`);
+                        setAttachmentFile(null);
+                        attachmentsState.refetch();
+                        timelineState.refetch();
+                      } catch (err) {
+                        setActionError(
+                          err instanceof ApiError ? err.message : "The upload failed.",
+                        );
+                      } finally {
+                        setSubmitting(false);
+                      }
+                    }}
+                  >
+                    Upload
+                  </button>
+                </div>
+              )}
+              <AsyncBoundary
+                state={attachmentsState}
+                onRetry={attachmentsState.refetch}
+                loadingLabel="Loading attachments…"
+                emptyCheck={(items) => items.length === 0}
+                emptyLabel="No evidence attachments yet."
+              >
+                {(items) => (
+                  <ul className="audit-list">
+                    {items.map((attachment) => (
+                      <li key={attachment.id}>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => void downloadAttachment(client, id!, attachment)}
+                        >
+                          {attachment.fileName}
+                        </button>{" "}
+                        ({Math.ceil(attachment.sizeBytes / 1024)} KB) — uploaded by{" "}
+                        {attachment.uploadedBy}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </AsyncBoundary>
+            </section>
 
             {canReadAudit && (
               <section aria-labelledby="audit-heading">

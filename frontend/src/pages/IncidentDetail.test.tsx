@@ -50,6 +50,9 @@ vi.mock("../api/incidents", () => ({
     }),
   transitionIncident: (...args: unknown[]) => transitionIncidentMock(...args),
   assignIncident: () => Promise.resolve(sampleIncident),
+  listAttachments: () => Promise.resolve([]),
+  uploadAttachment: () => Promise.resolve(),
+  downloadAttachment: () => Promise.resolve(),
 }));
 
 vi.mock("../api/ai", () => ({

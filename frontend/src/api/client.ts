@@ -98,6 +98,31 @@ export function createApiClient({ baseUrl, getAccessToken, onUnauthorized }: Api
       request<T>(path, { ...options, method: "POST", body }),
     put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
       request<T>(path, { ...options, method: "PUT", body }),
+    upload: async <T>(path: string, form: FormData): Promise<T> => {
+      const token = getAccessToken();
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: form,
+      });
+      if (response.status === 401) onUnauthorized();
+      if (!response.ok)
+        throw new ApiError(response.status, null, `Upload failed with status ${response.status}`);
+      return response.json() as Promise<T>;
+    },
+    download: async (path: string): Promise<Blob> => {
+      const token = getAccessToken();
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (response.status === 401) onUnauthorized();
+      if (!response.ok)
+        throw new ApiError(response.status, null, `Download failed with status ${response.status}`);
+      return response.blob();
+    },
   };
 }
 

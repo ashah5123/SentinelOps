@@ -29,6 +29,7 @@
     <datasource-micrometer.version>1.0.5</datasource-micrometer.version>
     <pgvector.version>0.1.6</pgvector.version>
     <mcp-sdk.version>0.18.4</mcp-sdk.version>
+    <minio.version>8.5.14</minio.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -41,6 +42,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.minio</groupId>
+      <artifactId>minio</artifactId>
+      <version>${minio.version}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

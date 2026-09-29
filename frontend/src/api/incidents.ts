@@ -6,6 +6,7 @@ import type {
   IncidentSummary,
   PageResponse,
   TimelineEntry,
+  IncidentAttachment,
 } from "./types";
 
 function toQueryString(params: IncidentQueryParams): string {
@@ -22,6 +23,40 @@ function toQueryString(params: IncidentQueryParams): string {
   if (params.sort) search.set("sort", params.sort);
   const qs = search.toString();
   return qs ? `?${qs}` : "";
+}
+
+export function listAttachments(
+  client: ApiClient,
+  id: string,
+  signal?: AbortSignal,
+): Promise<IncidentAttachment[]> {
+  return client.get(`/api/v1/incidents/${id}/attachments`, signal);
+}
+
+export function uploadAttachment(
+  client: ApiClient,
+  id: string,
+  file: File,
+): Promise<IncidentAttachment> {
+  const form = new FormData();
+  form.append("file", file);
+  return client.upload(`/api/v1/incidents/${id}/attachments`, form);
+}
+
+export async function downloadAttachment(
+  client: ApiClient,
+  incidentId: string,
+  attachment: IncidentAttachment,
+) {
+  const blob = await client.download(
+    `/api/v1/incidents/${incidentId}/attachments/${attachment.id}/content`,
+  );
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = attachment.fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export function listIncidents(
