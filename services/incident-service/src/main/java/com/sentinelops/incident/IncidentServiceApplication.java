@@ -2,6 +2,7 @@ package com.sentinelops.incident;
 
 import com.sentinelops.incident.ai.AiProperties;
 import com.sentinelops.incident.alerts.AlertsProperties;
+import com.sentinelops.incident.attachments.AttachmentProperties;
 import com.sentinelops.incident.config.IncidentServiceProperties;
 import com.sentinelops.incident.mcp.McpProperties;
 import com.sentinelops.incident.proposal.ProposalProperties;
@@ -20,7 +21,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
   AlertsProperties.class,
   McpProperties.class,
   ProposalProperties.class,
-  RemediationProperties.class
+  RemediationProperties.class,
+  AttachmentProperties.class
 })
 @EnableScheduling
 public class IncidentServiceApplication {

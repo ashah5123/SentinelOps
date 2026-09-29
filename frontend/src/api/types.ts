@@ -84,6 +84,17 @@ export interface AuditEvent {
   occurredAt: string;
 }
 
+export interface IncidentAttachment {
+  id: string;
+  incidentId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  uploadedBy: string;
+  uploadedAt: string;
+}
+
 export interface DeadLetterReplayResult {
   dlqTopic: string;
   targetTopic: string;

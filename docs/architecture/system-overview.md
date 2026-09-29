@@ -34,7 +34,8 @@ flowchart LR
 | PostgreSQL (+ pgvector) | System of record for incidents, alerts, audit events, agent proposals, remediation runbooks/executions, and the AI-triage retrieval index. |
 | Redpanda (Kafka-API-compatible) | Event backbone between `incident-service` and `telemetry-correlation-service`, and the transactional outbox's publish target. |
 | Keycloak | OIDC identity provider; role-based access control (VIEWER/RESPONDER/ADMIN) enforced per endpoint. |
-| Redis, MinIO | Provisioned in every environment; not yet read or written by any application code path (see `docs/development/local-platform.md`). |
+| MinIO / S3 | Private object storage for incident evidence attachments; PostgreSQL retains searchable metadata and integrity hashes. |
+| Redis | Provisioned in every environment; not yet read or written by an application code path. |
 
 ## 3. Primary incident lifecycle
 

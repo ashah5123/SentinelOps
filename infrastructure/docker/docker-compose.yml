@@ -337,6 +337,8 @@ services:
         condition: service_healthy
       webhook-sink:
         condition: service_healthy
+      minio-bucket-init:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: docker
       POSTGRES_HOST: postgres
@@ -374,6 +376,12 @@ services:
       ALERTS_WEBHOOK_HMAC_CURRENT_SECRET: ${ALERTS_WEBHOOK_HMAC_CURRENT_SECRET:-change-me-local-dev-only}
       ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET_ID: ${ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET_ID:-}
       ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET: ${ALERTS_WEBHOOK_HMAC_PREVIOUS_SECRET:-}
+      ATTACHMENTS_ENABLED: ${ATTACHMENTS_ENABLED:-true}
+      OBJECT_STORAGE_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      ATTACHMENTS_BUCKET: ${ATTACHMENTS_BUCKET:-incident-artifacts}
+      ATTACHMENTS_MAX_BYTES: ${ATTACHMENTS_MAX_BYTES:-10485760}
     ports:
       - "127.0.0.1:${INCIDENT_SERVICE_PORT:-8081}:8081"
     networks: [sentinelops-net]
